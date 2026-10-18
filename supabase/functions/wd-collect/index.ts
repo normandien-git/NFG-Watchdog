@@ -6,15 +6,18 @@
 // Secrets (Edge Functions › Secrets on NFG-Watchdog):
 //   SUPABASE_PAT         access token of a read-only member of the NFG Supabase organisation
 //   NETLIFY_TOKEN        Netlify personal access token (read)
-//   ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET   the Watchdog app registration
+//   ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET   the Watchdog app registration (directory read only)
+//   MAIL_CLIENT_ID / MAIL_CLIENT_SECRET [/ MAIL_TENANT_ID]   the existing "NFG Normandien – Mail" app (Mail.Send) for alerts
+//   MAIL_FROM            optional: defaults to noreply@normandien.co.za
 //   WD_TEAMS_WEBHOOK     optional: Teams workflow URL for alerts
 //   WD_PORTAL_URL        optional: defaults to https://watchdog.normandien.co.za
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { db, q, nowIso, SB_URL, syncFindings, fp, settings, type Finding } from "./lib.ts";
+import { db, q, nowIso, SB_URL, syncFindings, fp, type Finding } from "./lib.ts";
 import { runPosture, runLogs, supabaseReady } from "./supabase.ts";
 import { runNetlify, netlifyReady } from "./netlify.ts";
 import { runEntra, entraReady } from "./entra.ts";
 import { deliverAlerts } from "./alerts.ts";
+import { mailReady } from "./mail.ts";
 
 const ORIGINS = [/^https:\/\/watchdog\.normandien\.co\.za$/, /^https:\/\/[a-z0-9-]+\.netlify\.app$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 const cors = (req: Request) => {
@@ -55,10 +58,9 @@ async function selfCheck() {
   if (!netlifyReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "netlify"), check_code: "watchdog.no_netlify", severity: "medium", title: "Watchdog cannot see Netlify yet",
     detail: "The NETLIFY_TOKEN secret is not set.", remediation: "Netlify › User settings › Applications › New access token; save it as NETLIFY_TOKEN." });
   if (!entraReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "entra"), check_code: "watchdog.no_entra", severity: "medium", title: "Watchdog cannot see Entra ID / 365 yet",
-    detail: "ENTRA_TENANT_ID, ENTRA_CLIENT_ID or ENTRA_CLIENT_SECRET is not set. Alert emails also need it.", remediation: "Register the NFG Watchdog app in Entra (see the go-live checklist) and save the three secrets." });
-  const s = await settings();
-  if (!String(s.alert_mailbox || "").trim()) F.push({ ...base, fingerprint: fp("wd", "alerts", "mailbox"), check_code: "watchdog.no_mailbox", severity: "low", title: "Alert emails have no sending mailbox",
-    detail: "Alerts are recorded in Watchdog but cannot be emailed.", remediation: "Settings › Alert mailbox (e.g. it-alerts@normandien.co.za)." });
+    detail: "ENTRA_TENANT_ID, ENTRA_CLIENT_ID or ENTRA_CLIENT_SECRET is not set.", remediation: "Register the NFG Watchdog app in Entra (see the go-live checklist) and save the three secrets." });
+  if (!mailReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "mail"), check_code: "watchdog.no_mail", severity: "medium", title: "Watchdog cannot send email yet",
+    detail: "MAIL_CLIENT_ID or MAIL_CLIENT_SECRET is not set, so alerts are recorded but not emailed.", remediation: "Entra › App registrations › NFG Normandien – Mail › Certificates & secrets › New client secret \"NFG Watchdog\". Save MAIL_CLIENT_ID (its Application ID) and MAIL_CLIENT_SECRET on NFG-Watchdog, plus MAIL_TENANT_ID if ENTRA_TENANT_ID is not set." });
   const runs: any[] = await q(db.from("wd_run").select("job, ok, started_at, error").gte("started_at", new Date(Date.now() - 3 * 3600e3).toISOString()).order("started_at", { ascending: false }));
   for (const job of ["logs", "supabase"]) {
     const last = runs.find((r) => r.job === job);

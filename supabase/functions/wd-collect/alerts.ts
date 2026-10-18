@@ -1,7 +1,7 @@
 // NFG Watchdog collector: alerting. Open findings that match a rule become alerts (database function wd_alert_queue);
-// this sends them: one digest per channel and recipient list, by email (Microsoft 365) and/or a Teams workflow webhook.
+// this sends them: one digest per channel and recipient list, by email (Microsoft 365, the NFG Normandien – Mail app) and/or a Teams workflow webhook.
 import { db, q, nowIso, settings, setConnector } from "./lib.ts";
-import { graph, entraReady } from "./entra.ts";
+import { sendMail, mailReady, MAIL_FROM } from "./mail.ts";
 
 const TEAMS = Deno.env.get("WD_TEAMS_WEBHOOK") ?? "";
 const PORTAL = Deno.env.get("WD_PORTAL_URL") ?? "https://watchdog.normandien.co.za";
@@ -23,11 +23,8 @@ function emailHtml(items: any[]) {
 
 async function sendEmail(to: string[], subject: string, html: string) {
   const s = await settings();
-  const from = String(s.alert_mailbox || "").trim();
-  if (!from) throw new Error("No sending mailbox: set Settings › Alert mailbox");
-  if (!entraReady()) throw new Error("Entra connection not set up (needed to send through Microsoft 365)");
-  await graph(`/v1.0/users/${encodeURIComponent(from)}/sendMail`, { method: "POST", body: JSON.stringify({
-    message: { subject, body: { contentType: "HTML", content: html }, toRecipients: to.map((a) => ({ emailAddress: { address: a } })) }, saveToSentItems: false }) });
+  const from = String(s.alert_mailbox || "").trim() || MAIL_FROM;
+  await sendMail(from, to, subject, html);
 }
 async function sendTeams(items: any[]) {
   if (!TEAMS) throw new Error("WD_TEAMS_WEBHOOK secret not set");
@@ -60,6 +57,6 @@ export async function deliverAlerts() {
     await q(db.from("wd_alert").update(ok ? { delivered: true, delivered_at: nowIso(), delivery_error: null } : { delivery_error: errs.join("; ").slice(0, 500) }).in("id", items.map((i) => i.id)));
     if (ok) sent += items.length;
   }
-  await setConnector("alerts", { ok: sent === pending.length, pending: pending.length - sent, teams: !!TEAMS });
+  await setConnector("alerts", { ok: sent === pending.length, pending: pending.length - sent, teams: !!TEAMS, email: mailReady() });
   return { queued, sent, pending: pending.length };
 }

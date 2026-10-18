@@ -1,7 +1,7 @@
 // NFG Watchdog collector: Microsoft Entra ID / 365 (hourly). Our app registrations, what they may do,
 // their secrets and certificates, who signs in through them and from where, and changes to them.
 // Needs an app registration with application permissions: Application.Read.All, AuditLog.Read.All, Directory.Read.All
-// (and Mail.Send if Watchdog sends its alert emails through 365).
+// Alert emails do NOT go through this app: they use the NFG Normandien – Mail app (mail.ts).
 import { db, q, fp, nowIso, pool, getJson, upsertTargets, patchTargetMeta, syncFindings, syncInventory, insertMany, setConnector, settings, type Finding, type Sev } from "./lib.ts";
 
 const TENANT = Deno.env.get("ENTRA_TENANT_ID") ?? "";

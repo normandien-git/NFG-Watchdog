@@ -1,8 +1,8 @@
-// NFG Watchdog › Alerts and Admin: alerts, alert rules, collector runs and connections, settings, users, access log.
+// NFG Guard › Alerts and Admin: alerts, alert rules, collector runs and connections, settings, users, access log.
 import { H } from "./watchdog.js";
 const esc = H.esc;
 const CATS = { access: "Access", data: "Data exposure", config: "Settings", secrets: "Secrets", exposure: "Internet exposure", activity: "Activity", performance: "Performance", reliability: "Reliability" };
-const SOURCES = { supabase: "Supabase", netlify: "Netlify", entra: "Entra / 365", watchdog: "Watchdog" };
+const SOURCES = { supabase: "Supabase", netlify: "Netlify", entra: "Entra / 365", watchdog: "Guard" };
 
 // ---------------------------------------------------------------- Alerts
 H.screen("alerts", async (main, ctx) => {
@@ -102,10 +102,10 @@ H.screen("runs", async (main, ctx) => {
   main.innerHTML = H.title("Collector runs", "The collector runs on a schedule: traffic and sign-ins every 15 minutes, settings checks hourly, clean-up nightly. Its keys live only in the NFG-Watchdog edge function secrets.",
       ["logs", "supabase", "netlify", "entra"].map((j) => H.btn(`Run ${j}`, "admin", { attrs: `data-run="${j}"` })).join("")) +
     `<div class="grid3">` +
-      card("supabase", "Supabase", `<ol><li>Invite a new member to the NFG Supabase organisation with the <b>Read-only</b> role (e.g. watchdog@normandien.co.za) and turn on MFA for that account.</li><li>Signed in as that member: Account › Access Tokens › Generate new token, name it "NFG Watchdog".</li><li>NFG-Watchdog › Edge Functions › Secrets: add ${sec("WD_SUPABASE_PAT")} with the token.</li></ol><p>Read-only keeps the token from changing anything if it ever leaks.</p>`) +
-      card("netlify", "Netlify", `<ol><li>Netlify › User settings › Applications › Personal access tokens › New access token "NFG Watchdog", with an expiry date you will diarise.</li><li>Add it as ${sec("NETLIFY_TOKEN")} on NFG-Watchdog.</li></ol>`) +
-      card("entra", "Entra ID / 365", `<ol><li>Entra admin centre › App registrations › New registration "NFG Watchdog", this organisation only, no redirect.</li><li>API permissions › Microsoft Graph › Application: ${sec("Application.Read.All")}, ${sec("AuditLog.Read.All")}, ${sec("Directory.Read.All")} . Grant admin consent. No Mail.Send: email goes through the existing Mail app.</li><li>Certificates & secrets › New client secret (12 months).</li><li>Add ${sec("ENTRA_TENANT_ID")}, ${sec("ENTRA_CLIENT_ID")} and ${sec("ENTRA_CLIENT_SECRET")} on NFG-Watchdog.</li></ol><p>Sign-in logs need Entra ID P1 (included in Microsoft 365 Business Premium).</p>`) +
-      card("alerts", "Email and alerts", `<p>Email (alerts and sign-in emails) goes out as noreply@normandien.co.za through the existing Entra app <b>NFG Normandien – Mail</b>, the same way Fleet and Tech send.</p><ol><li>Entra › App registrations › NFG Normandien – Mail › Certificates & secrets › New client secret "NFG Watchdog" (12 months).</li><li>Add ${sec("MAIL_CLIENT_ID")} (its Application ID), ${sec("MAIL_CLIENT_SECRET")} and ${sec("MAIL_TENANT_ID")} on NFG-Watchdog.</li><li>Sign-in emails: Authentication › Hooks › Send Email hook › HTTPS, URL <span class="mono">…/functions/v1/wd-auth-email</span>, generate the secret and save it as ${sec("SEND_EMAIL_HOOK_SECRET")}.</li></ol><p>Teams: create a Workflows "post to a channel when a webhook request is received" flow and add its URL as ${sec("WD_TEAMS_WEBHOOK")}.</p>`) +
+      card("supabase", "Supabase", `<ol><li>Invite a new member to the NFG Supabase organisation with the <b>Read-only</b> role (e.g. watchdog@normandien.co.za) and turn on MFA for that account.</li><li>Signed in as that member: Account › Access Tokens › Generate new token, name it "NFG Guard".</li><li>NFG-Watchdog › Edge Functions › Secrets: add ${sec("WD_SUPABASE_PAT")} with the token.</li></ol><p>Read-only keeps the token from changing anything if it ever leaks.</p>`) +
+      card("netlify", "Netlify", `<ol><li>Netlify › User settings › Applications › Personal access tokens › New access token "NFG Guard", with an expiry date you will diarise.</li><li>Add it as ${sec("NETLIFY_TOKEN")} on NFG-Watchdog.</li></ol>`) +
+      card("entra", "Entra ID / 365", `<ol><li>Entra admin centre › App registrations › New registration "NFG Guard", this organisation only, no redirect.</li><li>API permissions › Microsoft Graph › Application: ${sec("Application.Read.All")}, ${sec("AuditLog.Read.All")}, ${sec("Directory.Read.All")} . Grant admin consent. No Mail.Send: email goes through the existing Mail app.</li><li>Certificates & secrets › New client secret (12 months).</li><li>Add ${sec("ENTRA_TENANT_ID")}, ${sec("ENTRA_CLIENT_ID")} and ${sec("ENTRA_CLIENT_SECRET")} on NFG-Watchdog.</li></ol><p>Sign-in logs need Entra ID P1 (included in Microsoft 365 Business Premium).</p>`) +
+      card("alerts", "Email and alerts", `<p>Email (alerts and sign-in emails) goes out as noreply@normandien.co.za through the existing Entra app <b>NFG Normandien – Mail</b>, the same way Fleet and Tech send.</p><ol><li>Entra › App registrations › NFG Normandien – Mail › Certificates & secrets › New client secret "NFG Guard" (12 months).</li><li>Add ${sec("MAIL_CLIENT_ID")} (its Application ID), ${sec("MAIL_CLIENT_SECRET")} and ${sec("MAIL_TENANT_ID")} on NFG-Watchdog.</li><li>Sign-in emails: Authentication › Hooks › Send Email hook › HTTPS, URL <span class="mono">…/functions/v1/wd-auth-email</span>, generate the secret and save it as ${sec("SEND_EMAIL_HOOK_SECRET")}.</li></ol><p>Teams: create a Workflows "post to a channel when a webhook request is received" flow and add its URL as ${sec("WD_TEAMS_WEBHOOK")}.</p>`) +
     `</div><h2>Runs</h2>` +
     H.table([
       { h: "Started", w: "140px", f: (r) => esc(H.dateTime(r.started_at)), sv: (r) => r.started_at },
@@ -141,7 +141,7 @@ H.screen("settings", async (main, ctx) => {
   const rows = (await H.q(H.db.from("wd_setting").select("*").order("key"))).filter((r) => SET_TYPE[r.key]);
   if (ctx.stale()) return;
   const show = (r) => SET_TYPE[r.key] === "list" ? (r.value || []).join(", ") || "none" : String(r.value ?? "") || "not set";
-  main.innerHTML = H.title("Settings", "What Watchdog treats as normal. Changes apply from the next collector run and are kept in the change log.") +
+  main.innerHTML = H.title("Settings", "What Guard treats as normal. Changes apply from the next collector run and are kept in the change log.") +
     H.table([
       { h: "Setting", w: "1.4fr", f: (r) => `<b>${esc(SET_NAME[r.key] || r.key)}</b><br><span class="sub-t">${esc(r.note || "")}</span>` },
       { h: "Value", w: "1.6fr", f: (r) => `<span class="mono">${esc(show(r))}</span>` },
@@ -173,7 +173,7 @@ H.screen("users", async (main, ctx) => {
   H.loading(main);
   const rows = await H.q(H.db.from("wd_user").select("*").order("email"));
   if (ctx.stale()) return;
-  main.innerHTML = H.title("Users", "Who may open Watchdog. Being on this list is not enough: the person also needs a Watchdog login (see below) and an authenticator app.",
+  main.innerHTML = H.title("Users", "Who may open Guard. Being on this list is not enough: the person also needs a Guard login (see below) and an authenticator app.",
       H.btn("Add a person", "admin", { cls: "pri", attrs: "data-new" })) +
     H.table([
       { h: "Person", w: "2fr", f: (r) => `<b>${esc(r.full_name || "")}</b><br><span class="sub-t">${esc(r.email)}</span>`, sv: (r) => r.email },
@@ -182,7 +182,7 @@ H.screen("users", async (main, ctx) => {
       { h: "Access", w: "1fr", f: (r) => r.active ? H.tag("on", "ok") : H.tag("off", "mute") },
       { h: "Last seen", w: "1fr", f: (r) => esc(r.last_seen ? H.ago(r.last_seen) : "never"), sv: (r) => r.last_seen || "" },
     ], rows, { min: 760, rowAttrs: () => "" }) +
-    `<div class="note"><b>Giving someone a login.</b> Supabase › NFG-Watchdog › Authentication › Users › Add user › Create new user, with their email, a long temporary password and "Auto confirm" ticked. Send the password separately. They set up their authenticator app on first sign-in and should change the password under My account. Watchdog links the login to this list by email.</div>`;
+    `<div class="note"><b>Giving someone a login.</b> Supabase › NFG-Watchdog › Authentication › Users › Add user › Create new user, with their email, a long temporary password and "Auto confirm" ticked. Send the password separately. They set up their authenticator app on first sign-in and should change the password under My account. Guard links the login to this list by email.</div>`;
   const edit = async (r = {}) => {
     const ok = await H.sheet({ title: r.email ? r.email : "Add a person", ok: "Save",
       html: `<label class="fld">Email<input name="email" type="email" required value="${esc(r.email || "")}" ${r.email ? "readonly" : ""}></label>` +
@@ -198,12 +198,12 @@ H.screen("users", async (main, ctx) => {
   H.rowClick(main, edit);
 });
 
-// ---------------------------------------------------------------- Watchdog access log
+// ---------------------------------------------------------------- Guard access log
 H.screen("accesslog", async (main, ctx) => {
   H.loading(main);
   const rows = await H.q(H.db.from("wd_access_log").select("*").order("at", { ascending: false }).limit(1000));
   if (ctx.stale()) return;
-  main.innerHTML = H.title("Watchdog access log", "Who signed in to Watchdog itself, from where. Watchdog's own Supabase project is also watched like every other project.") +
+  main.innerHTML = H.title("Guard access log", "Who signed in to Guard itself, from where. Guard's own Supabase project is also watched like every other project.") +
     H.table([
       { h: "When", w: "140px", f: (r) => esc(H.dateTime(r.at)), sv: (r) => r.at },
       { h: "Who", w: "1.6fr", f: (r) => esc(r.email) },

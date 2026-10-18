@@ -1,10 +1,10 @@
-/* NFG Watchdog: layout (from NFG Fleet) and styles from NFG Hive / NFG Core so the group apps look and behave alike (later sections came with Hive; keep or trim as Fleet grows).
+/* NFG Guard: layout (from NFG Fleet) and styles from NFG Hive / NFG Core so the group apps look and behave alike (later sections came with Hive; keep or trim as Fleet grows).
    NFG group palette: black #000000, dark grey #A7A9AC, light grey #D9D9D9. Status colours are semantic only. Type: Lato. */
 :root{
   --ink:#000; --grey-dk:#a7a9ac; --grey-lt:#d9d9d9;
   --muted:#55585c; --line:#e3e3e3; --ground:#f4f4f4; --surface:#fff; --soft:#f7f7f7;
   --ok-bg:#e1f0e5; --ok:#1d5a30; --warn-bg:#fbedd5; --warn:#714200; --info-bg:#e2eaf2; --info:#1f4469; --err-bg:#fbe4e2; --err:#8f1d18;
-  --rail:84px; --subw:248px;
+  --brand:#E02627; --rail:84px; --subw:248px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -31,7 +31,7 @@ p{margin:0;max-width:85ch}
 .rail{flex:0 0 var(--rail);background:#000;color:#fff;display:flex;flex-direction:column;padding:14px 6px 12px;gap:4px;z-index:5;position:sticky;top:0;height:100vh;overflow-y:auto}
 .brand{display:flex;flex-direction:column;align-items:center;gap:6px;padding:4px 0 14px;border-bottom:1px solid #2a2a2a;margin-bottom:8px}
 .brand img{width:34px;height:auto}
-.brand .word{font-weight:900;font-size:13px;letter-spacing:.18em;color:#F1B80E}
+.brand .word{font-weight:900;font-size:13px;letter-spacing:.18em;color:var(--brand)}
 .mods{display:flex;flex-direction:column;gap:2px;flex:1 1 auto}
 .mod{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:9px 2px 8px;border-radius:8px;color:var(--grey-dk);font-size:10.5px;font-weight:700;text-align:center;line-height:1.15;min-height:56px}
 .mod svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -814,7 +814,7 @@ i.ad{background:#1d9a40}i.as{background:#e1f0e5;border:2px solid #1d9a40}i.af{bo
 .dp-ghost::after{content:attr(data-when);display:block;font-size:12px;font-weight:900;color:#c0392b}
 @media (max-width:1000px){.pv-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pv-grid,.dp-grid{grid-template-columns:1fr;height:auto}.pv-map{height:60vh}}
 
-/* ---------- Watchdog additions (appended to the Fleet/Hive base). Accent: NFG Sunrise Yellow #F1B80E. ---------- */
+/* ---------- Guard additions (appended to the Fleet/Hive base). Accent: NFG Red #E02627. ---------- */
 .main h2{margin-top:4px}
 /* severity: colour always comes with its word */
 .sev{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11.5px;font-weight:900;white-space:nowrap;letter-spacing:.02em}
@@ -836,7 +836,7 @@ i.ad{background:#1d9a40}i.as{background:#e1f0e5;border:2px solid #1d9a40}i.af{bo
 .wd-cols{display:flex;align-items:flex-end;gap:2px;height:120px;padding:4px 0;border-bottom:1px solid var(--grey-lt)}
 .wd-col{position:relative;flex:1 1 0;height:100%;display:flex;align-items:flex-end;min-width:3px;outline:none}
 .wd-col i{display:block;width:100%;background:#000;border-radius:4px 4px 0 0}
-.wd-col:hover i,.wd-col:focus i{background:#F1B80E}
+.wd-col:hover i,.wd-col:focus i{background:var(--brand)}
 .wd-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#000;color:#fff;font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap;z-index:3;pointer-events:none}
 .wd-col:hover .wd-tip,.wd-col:focus .wd-tip{display:block}
 .wd-cols-foot{display:flex;justify-content:space-between;font-size:11.5px}
@@ -875,3 +875,8 @@ details summary{cursor:pointer}
 .brand .word{font-size:10.5px;letter-spacing:.1em}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .login{min-height:100vh}
+
+/* NFG Guard brand: red accent on the sign-in page, the rail and the top bar */
+.login-card{border-top:5px solid var(--brand)}
+.wd-login-brand b{color:var(--brand)}
+.topbar{box-shadow:inset 0 -3px 0 var(--brand)}

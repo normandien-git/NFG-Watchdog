@@ -1,4 +1,4 @@
-// NFG Watchdog: Supabase Auth "Send Email" hook (edge function wd-auth-email on NFG-Watchdog, verify_jwt off).
+// NFG Guard: Supabase Auth "Send Email" hook (edge function wd-auth-email on NFG-Watchdog, verify_jwt off).
 // Supabase Auth calls this instead of SMTP for every sign-in email (password reset, invite, confirmations). We send it as
 // noreply@normandien.co.za through Microsoft Graph with the existing "NFG Normandien – Mail" app, the same way Fleet and Tech send.
 // Only Supabase Auth can call it: each request is signed with the hook secret (Standard Webhooks), checked below.
@@ -52,22 +52,22 @@ async function sendMail(to: string, subject: string, html: string) {
 
 // ---------- the emails ----------
 const COPY: Record<string, { subject: string; lead: string; button: string }> = {
-  recovery: { subject: "Reset your NFG Watchdog password", lead: "Someone asked to reset the password for your NFG Watchdog account. If it was you, choose a new password with the button below.", button: "Choose a new password" },
-  invite: { subject: "Your NFG Watchdog account", lead: "An NFG Watchdog account has been set up for you. Open it with the button below.", button: "Open NFG Watchdog" },
-  magiclink: { subject: "Your NFG Watchdog sign-in link", lead: "Use the button below to sign in to NFG Watchdog.", button: "Sign in" },
-  signup: { subject: "Confirm your NFG Watchdog email", lead: "Confirm this email address for your NFG Watchdog account.", button: "Confirm my email" },
-  email_change: { subject: "Confirm your new NFG Watchdog email", lead: "Confirm the change of email address on your NFG Watchdog account.", button: "Confirm the change" },
-  email: { subject: "Your NFG Watchdog sign-in link", lead: "Use the button below to sign in to NFG Watchdog.", button: "Sign in" },
+  recovery: { subject: "Reset your NFG Guard password", lead: "Someone asked to reset the password for your NFG Guard account. If it was you, choose a new password with the button below.", button: "Choose a new password" },
+  invite: { subject: "Your NFG Guard account", lead: "An NFG Guard account has been set up for you. Open it with the button below.", button: "Open NFG Guard" },
+  magiclink: { subject: "Your NFG Guard sign-in link", lead: "Use the button below to sign in to NFG Guard.", button: "Sign in" },
+  signup: { subject: "Confirm your NFG Guard email", lead: "Confirm this email address for your NFG Guard account.", button: "Confirm my email" },
+  email_change: { subject: "Confirm your new NFG Guard email", lead: "Confirm the change of email address on your NFG Guard account.", button: "Confirm the change" },
+  email: { subject: "Your NFG Guard sign-in link", lead: "Use the button below to sign in to NFG Guard.", button: "Sign in" },
 };
 
 function page(lead: string, inner: string) {
   return `<div style="font-family:Lato,Arial,sans-serif;font-size:14px;color:#000;max-width:560px">` +
-    `<div style="background:#000;color:#F1B80E;padding:12px 16px;font-weight:900;letter-spacing:.16em">NFG WATCHDOG</div>` +
+    `<div style="background:#000;color:#fff;border-top:4px solid #E02627;padding:12px 16px;font-weight:900;letter-spacing:.16em">NFG GUARD</div>` +
     `<div style="padding:16px"><p>${esc(lead)}</p>${inner}` +
     `<p style="color:#55585c;font-size:12px;margin-top:24px">If you did not ask for this, ignore this email; nothing changes. Questions: NFG IT.</p></div></div>`;
 }
 const btn = (href: string, label: string) =>
-  `<p><a href="${esc(href)}" style="display:inline-block;background:#F1B80E;color:#000;font-weight:700;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(label)}</a></p>` +
+  `<p><a href="${esc(href)}" style="display:inline-block;background:#E02627;color:#fff;font-weight:700;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(label)}</a></p>` +
   `<p style="color:#55585c;font-size:12px">The link works once and expires within an hour.</p>`;
 const verifyLink = (hash: string, type: string, redirect: string) =>
   `${SB_URL}/auth/v1/verify?token=${encodeURIComponent(hash)}&type=${encodeURIComponent(type)}&redirect_to=${encodeURIComponent(redirect)}`;
@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
   const redirect = String(d.redirect_to || d.site_url || "");
   try {
     if (type === "reauthentication") {
-      await sendMail(user.email, "Your NFG Watchdog confirmation code",
-        page("Type this code in NFG Watchdog to confirm it is you:", `<p style="font-size:26px;font-weight:900;letter-spacing:.2em">${esc(d.token)}</p>`));
+      await sendMail(user.email, "Your NFG Guard confirmation code",
+        page("Type this code in NFG Guard to confirm it is you:", `<p style="font-size:26px;font-weight:900;letter-spacing:.2em">${esc(d.token)}</p>`));
     } else if (type === "email_change") {
       const c = COPY.email_change;
       if (d.token_hash_new && user.new_email) {
@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
     } else if (type === "recovery" || type === "magiclink" || type === "email") {
       // code only, no link: Microsoft's Safe Links scanner opens links before the person does and uses them up
       const recovery = type === "recovery";
-      await sendMail(user.email, recovery ? "Your NFG Watchdog password reset code" : "Your NFG Watchdog sign-in code",
-        page(recovery ? "Someone asked to reset the password for your NFG Watchdog account. If it was you, type this code on the Watchdog reset screen:" : "Type this code in NFG Watchdog to sign in:",
+      await sendMail(user.email, recovery ? "Your NFG Guard password reset code" : "Your NFG Guard sign-in code",
+        page(recovery ? "Someone asked to reset the password for your NFG Guard account. If it was you, type this code on the Guard reset screen:" : "Type this code in NFG Guard to sign in:",
           `<p style="font-size:28px;font-weight:900;letter-spacing:.25em;margin:18px 0">${esc(d.token)}</p><p style="color:#55585c;font-size:12px">The code works once and expires within an hour. Only the newest code works.</p>`));
     } else {
       const c = COPY[type] ?? COPY.magiclink;

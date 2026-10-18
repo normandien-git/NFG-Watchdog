@@ -1,6 +1,6 @@
-// NFG Watchdog shell: sign-in (own accounts + authenticator app), rail, module menu, top bar, router and helpers.
+// NFG Guard shell: sign-in (own accounts + authenticator app), rail, module menu, top bar, router and helpers.
 // Layout and helpers come from NFG Fleet / Hive / Core so it looks and behaves like the other NFG apps.
-// The difference: Watchdog does NOT use the central NFG login. People sign in with a Watchdog account
+// The difference: Guard does NOT use the central NFG login. People sign in with a Guard account
 // (NFG-Watchdog project), and must use an authenticator app every time (aal2). Nothing loads before that.
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
 import { WD_URL, WD_KEY, PORTAL_URL, IDLE_MINUTES } from "./config.js";
@@ -18,7 +18,7 @@ H.SCREEN_PERM = {};
 H.can = (p) => !p || (p === "work" ? ["admin", "analyst"].includes(H.me?.role) : p === "admin" ? H.me?.role === "admin" : true);
 const allowed = (s) => H.can(H.SCREEN_PERM[s]);
 H.allowed = allowed;
-H.ROLE_NAME = { admin: "Watchdog admin", analyst: "Analyst", viewer: "View only" };
+H.ROLE_NAME = { admin: "Guard admin", analyst: "Analyst", viewer: "View only" };
 
 // ---------- small helpers ----------
 H.esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -80,8 +80,8 @@ H.targets = async (force) => {
   }
   return H._targets;
 };
-H.tname = (id) => H._targets?.get(id)?.name ?? (id ? String(id).replace(/^[a-z-]+:/, "") : "Watchdog");
-H.kindTag = (id) => { const k = String(id ?? "").split(":")[0]; return H.tag({ supabase: "Supabase", "supabase-org": "Supabase org", netlify: "Netlify", entra: "Entra" }[k] ?? "Watchdog", "mute"); };
+H.tname = (id) => H._targets?.get(id)?.name ?? (id ? String(id).replace(/^[a-z-]+:/, "") : "Guard");
+H.kindTag = (id) => { const k = String(id ?? "").split(":")[0]; return H.tag({ supabase: "Supabase", "supabase-org": "Supabase org", netlify: "Netlify", entra: "Entra" }[k] ?? "Guard", "mute"); };
 H.period = (cur, hours = [24, 168, 720, 2160]) => `<div class="seg" role="group" aria-label="Period">${hours.map((h) =>
   `<button type="button" data-period="${h}" class="${h === cur ? "on" : ""}">${h === 24 ? "24 hours" : h === 168 ? "7 days" : h === 720 ? "30 days" : "90 days"}</button>`).join("")}</div>`;
 
@@ -169,7 +169,7 @@ document.addEventListener("input", (e) => {
 });
 H.btn = (label, perm, o = {}) => {
   const ok = H.can(perm);
-  return `<button type="button" class="btn ${o.cls || ""}" ${o.attrs || ""}${ok ? "" : ` disabled title="${H.esc(o.why || (perm === "admin" ? "Only a Watchdog admin can do this" : "You need the analyst or admin role for this"))}"`}>${H.esc(label)}</button>`;
+  return `<button type="button" class="btn ${o.cls || ""}" ${o.attrs || ""}${ok ? "" : ` disabled title="${H.esc(o.why || (perm === "admin" ? "Only a Guard admin can do this" : "You need the analyst or admin role for this"))}"`}>${H.esc(label)}</button>`;
 };
 
 // ---------- in-page dialogs ----------
@@ -227,7 +227,7 @@ H.shell = () => {
     `<button class="mod" data-mod="${m.k}">${H.icon(H.ICONS[m.k] || "")}${H.esc(m.n)}</button>`).join("");
   document.getElementById("app").innerHTML =
     '<div class="app">' +
-    '<aside class="rail" aria-label="Modules"><div class="brand"><img src="assets/watchdog-mark-white.svg" alt="NFG Watchdog"><div class="word">WATCHDOG</div></div>' +
+    '<aside class="rail" aria-label="Modules"><div class="brand"><img src="assets/watchdog-mark-white.svg" alt="NFG Guard"><div class="word">GUARD</div></div>' +
     `<div class="mods">${rail}</div>` +
     `<div class="fleet-sw"><a class="home-link" href="${H.esc(PORTAL_URL)}" target="_blank" rel="noopener" title="NFG Home (separate sign-in)">${H.icon(I.apps)}<span>NFG apps</span></a></div>` +
     `<button class="me" id="meBtn" title="${H.esc(name)}"><span class="av">${H.esc(initials(name))}</span><span class="nm">${H.esc(String(name).split(/[\s@]/)[0])}</span></button></aside>` +
@@ -242,7 +242,7 @@ H.shell = () => {
     `<button class="ib" id="tbOut" aria-label="Sign out" title="Sign out">${H.icon(I.out)}</button></div></div>` +
     '<main class="main" id="main"></main>' +
     `<div class="status"><span>Signed in as ${H.esc(name)} · ${H.esc(H.ROLE_NAME[H.me.role] || H.me.role)} · authenticator app verified</span>` +
-    `<span title="Code version and when it was last updated">Watchdog · v${b.version} · ${b.date} ${b.time}</span></div>` +
+    `<span title="Code version and when it was last updated">Guard · v${b.version} · ${b.date} ${b.time}</span></div>` +
     "</div></div>";
   document.querySelectorAll(".mod").forEach((el) => { el.onclick = () => H.railClick(el.dataset.mod); });
   document.getElementById("tbMenu").onclick = () => H.toggleMenu();
@@ -250,7 +250,7 @@ H.shell = () => {
   document.getElementById("tbBack").onclick = () => H.back();
   document.getElementById("tbRefresh").onclick = async () => { await H.targets(true); H.go(H.cur.screen, { push: false, ctx: H.cur.ctx }); H.toast("Refreshed"); };
   document.getElementById("tbOut").onclick = async () => {
-    const v = await H.sheet({ title: "Sign out?", html: `<label class="chk"><input type="checkbox" name="all"> Also sign out my other Watchdog sessions</label>`, ok: "Sign out", collect: (f) => ({ all: f.all.checked }) });
+    const v = await H.sheet({ title: "Sign out?", html: `<label class="chk"><input type="checkbox" name="all"> Also sign out my other Guard sessions</label>`, ok: "Sign out", collect: (f) => ({ all: f.all.checked }) });
     if (v) H.signOut(v.all ? "global" : "local");
   };
   document.getElementById("meBtn").onclick = () => H.go("me");
@@ -340,7 +340,7 @@ H.go = (screen, o = {}) => {
   const fn = H.SCREENS[screen];
   if (!allowed(screen)) {
     main.innerHTML = `<div class="lock"><div class="ring">${H.icon(I.lock)}</div><h1>${H.esc(info.item ? info.item.n : "Locked")}</h1>` +
-      `<p class="sub-t">Your Watchdog role (${H.esc(H.ROLE_NAME[H.me.role])}) cannot open this screen. A Watchdog admin can change your role in Admin › Users.</p></div>`;
+      `<p class="sub-t">Your Guard role (${H.esc(H.ROLE_NAME[H.me.role])}) cannot open this screen. A Guard admin can change your role in Admin › Users.</p></div>`;
     return;
   }
   if (!fn) {
@@ -355,13 +355,13 @@ H.back = () => { const p = H.stack.pop(); if (p) H.go(p.screen, { push: false, c
 // ================================================================== sign-in
 const app = () => document.getElementById("app");
 const card = (inner) => {
-  app().innerHTML = `<div class="login"><div class="login-card"><div class="wd-login-brand"><img src="assets/watchdog-mark.svg" alt=""><div><b>NFG WATCHDOG</b><span>IT security and health</span></div></div>${inner}</div></div>`;
+  app().innerHTML = `<div class="login"><div class="login-card"><div class="wd-login-brand"><img src="assets/watchdog-mark.svg" alt=""><div><b>NFG GUARD</b><span>IT security and health</span></div></div>${inner}</div></div>`;
   return app().querySelector(".login-card");
 };
 const errLine = (c, t) => { const e = c.querySelector("[data-err]"); e.hidden = !t; e.textContent = t || ""; };
 
 function loginScreen(msg) {
-  const c = card(`<p class="sub-t">Sign in with your Watchdog account. This is not your NFG app login.</p>` +
+  const c = card(`<p class="sub-t">Sign in with your Guard account. This is not your NFG app login.</p>` +
     (msg ? `<div class="banner">${H.esc(msg)}</div>` : "") +
     `<form data-f class="wd-stack"><label class="fld">Email<input name="email" type="email" autocomplete="username" required></label>` +
     `<label class="fld">Password<input name="pw" type="password" autocomplete="current-password" required></label>` +
@@ -388,7 +388,7 @@ function loginScreen(msg) {
 
 // password reset by emailed code (links get used up by Microsoft's link scanner before the person clicks them)
 function resetCode(email, msg) {
-  const c = card(`<h2>Reset your password</h2><p class="sub-t">If ${H.esc(email)} has a Watchdog account, an email from noreply@normandien.co.za is on its way with a reset code. Type it here. You will still need your authenticator app.</p>` +
+  const c = card(`<h2>Reset your password</h2><p class="sub-t">If ${H.esc(email)} has a Guard account, an email from noreply@normandien.co.za is on its way with a reset code. Type it here. You will still need your authenticator app.</p>` +
     (msg ? `<div class="banner">${H.esc(msg)}</div>` : "") +
     `<form data-f class="wd-stack"><label class="fld">Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required></label>` +
     `<p class="dlg-err" data-err hidden></p><button class="btn pri wide" type="submit">Continue</button></form><button class="linkbtn" data-back type="button">Back to sign-in</button>`);
@@ -409,9 +409,9 @@ function resetCode(email, msg) {
 async function mfaEnrol() {
   const { data: fl } = await sb.auth.mfa.listFactors();
   for (const f of (fl?.all ?? []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: f.id });
-  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", issuer: "NFG Watchdog", friendlyName: `Watchdog ${new Date().toISOString().slice(0, 16)}` });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", issuer: "NFG Guard", friendlyName: `Guard ${new Date().toISOString().slice(0, 16)}` });
   if (error) { loginScreen(error.message); return; }
-  const c = card(`<h2>Set up your authenticator app</h2><p class="sub-t">Watchdog needs a code from an authenticator app (Microsoft Authenticator, Google Authenticator, 1Password…) every time you sign in. Scan this code with the app.</p>` +
+  const c = card(`<h2>Set up your authenticator app</h2><p class="sub-t">Guard needs a code from an authenticator app (Microsoft Authenticator, Google Authenticator, 1Password…) every time you sign in. Scan this code with the app.</p>` +
     `<img class="wd-qr" src="${H.esc(data.totp.qr_code)}" alt="QR code for your authenticator app">` +
     `<details><summary class="sub-t">Can't scan it?</summary><p class="mono" style="overflow-wrap:anywhere">${H.esc(data.totp.secret)}</p></details>` +
     `<form data-f class="wd-stack"><label class="fld">6-digit code from the app<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>` +
@@ -430,7 +430,7 @@ async function mfaChallenge() {
   const { data: fl } = await sb.auth.mfa.listFactors();
   const factor = (fl?.totp ?? []).find((x) => x.status === "verified");
   if (!factor) return mfaEnrol();
-  const c = card(`<h2>Authenticator code</h2><p class="sub-t">Open your authenticator app and type the 6-digit code for NFG Watchdog.</p>` +
+  const c = card(`<h2>Authenticator code</h2><p class="sub-t">Open your authenticator app and type the 6-digit code for NFG Guard.</p>` +
     `<form data-f class="wd-stack"><label class="fld">Code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>` +
     `<p class="dlg-err" data-err hidden></p><button class="btn pri wide" type="submit">Continue</button></form><button class="linkbtn" data-out type="button">Use a different account</button>`);
   const f = c.querySelector("[data-f]"); f.code.focus();
@@ -462,7 +462,7 @@ function newPassword() {
 }
 
 function notListed(me) {
-  card(`<h2>No access to Watchdog</h2><p class="sub-t">${H.esc(me?.email || "This account")} can sign in, but is ${me?.listed ? "switched off" : "not on the Watchdog list"}. Ask a Watchdog admin to add you in Admin › Users.</p>` +
+  card(`<h2>No access to Guard</h2><p class="sub-t">${H.esc(me?.email || "This account")} can sign in, but is ${me?.listed ? "switched off" : "not on the Guard list"}. Ask a Guard admin to add you in Admin › Users.</p>` +
     `<button class="btn wide" data-out type="button">Sign out</button>`).querySelector("[data-out]").onclick = () => H.signOut("local");
 }
 
@@ -470,7 +470,7 @@ H.signOut = async (scope = "local") => {
   try { await sb.rpc("wd_touch", { p_action: scope === "global" ? "sign-out (all sessions)" : "sign-out" }); } catch {}
   await sb.auth.signOut({ scope });
   location.hash = "";
-  loginScreen(scope === "global" ? "Signed out of every Watchdog session." : "Signed out.");
+  loginScreen(scope === "global" ? "Signed out of every Guard session." : "Signed out.");
 };
 
 // signed out after IDLE_MINUTES without a click, key or scroll

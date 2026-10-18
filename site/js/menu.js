@@ -1,4 +1,4 @@
-// NFG Watchdog: the menu, Overview and My account.
+// NFG Guard: the menu, Overview and My account.
 import { H } from "./watchdog.js";
 const esc = H.esc;
 
@@ -49,7 +49,7 @@ H.MENU = [
       { n: "Collector runs", s: "runs" },
       { n: "Settings", s: "settings" },
       { n: "Users", s: "users" },
-      { n: "Watchdog access log", s: "accesslog" },
+      { n: "Guard access log", s: "accesslog" },
     ]},
   ]},
 ];
@@ -98,7 +98,7 @@ H.screen("home", async (main, ctx) => {
   const conns = [["supabase", "Supabase"], ["netlify", "Netlify"], ["entra", "Entra / 365"], ["alerts", "Alerts"]];
 
   const scoreCls = score == null ? "" : score >= 85 ? "good" : score >= 60 ? "warn" : "bad";
-  main.innerHTML = H.title("Security overview", "Everything Watchdog watches: Supabase projects, Netlify sites and the Entra / 365 apps they use. Checks run every hour; traffic and sign-ins every 15 minutes.",
+  main.innerHTML = H.title("Security overview", "Everything Guard watches: Supabase projects, Netlify sites and the Entra / 365 apps they use. Checks run every hour; traffic and sign-ins every 15 minutes.",
       H.btn("Run all checks now", "admin", { cls: "pri", attrs: "data-runall" })) +
     (conns.some(([k]) => !c[k]?.ok) ? `<div class="banner">Some connections are not working yet: ${conns.filter(([k]) => !c[k]?.ok).map(([k, l]) => `<b>${esc(l)}</b>${c[k]?.note ? ` (${esc(c[k].note)})` : ""}`).join(", ")}. <button class="link" data-go="runs">See Collector runs</button></div>` : "") +
     `<div class="kpis">` +
@@ -156,7 +156,7 @@ H.screen("home", async (main, ctx) => {
 H.screen("me", async (main) => {
   const { data: { user } } = await H.db.auth.getUser();
   const { data: fl } = await H.db.auth.mfa.listFactors();
-  main.innerHTML = H.title("My account", "Your Watchdog sign-in. It is separate from your NFG app login on purpose: if the NFG login is ever compromised, Watchdog still stands.") +
+  main.innerHTML = H.title("My account", "Your Guard sign-in. It is separate from your NFG app login on purpose: if the NFG login is ever compromised, Guard still stands.") +
     `<div class="card" style="max-width:640px"><dl class="kv"><dt>Name</dt><dd>${esc(H.me.name || "")}</dd><dt>Email</dt><dd>${esc(user?.email)}</dd>` +
     `<dt>Role</dt><dd>${esc(H.ROLE_NAME[H.me.role])}</dd><dt>Last sign-in</dt><dd>${esc(H.dateTime(user?.last_sign_in_at))}</dd>` +
     `<dt>Authenticator apps</dt><dd>${(fl?.totp ?? []).filter((f) => f.status === "verified").map((f) => esc(f.friendly_name || "App")).join(", ") || "None"}</dd></dl>` +

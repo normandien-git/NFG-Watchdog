@@ -1,4 +1,4 @@
-// NFG Watchdog › Access: who is connecting (from where, with which key, how much data leaves), sign-ins,
+// NFG Guard › Access: who is connecting (from where, with which key, how much data leaves), sign-ins,
 // direct database logins, and the people who hold admin access to Supabase, Netlify and our Entra apps.
 import { H } from "./watchdog.js";
 const esc = H.esc;
@@ -45,7 +45,7 @@ H.screen("connecting", async (main, ctx) => {
       { h: "Addresses", w: "100px", cls: "n", f: (r) => H.u0(r.ips), sv: (r) => Number(r.ips) },
       { h: "Last", w: "100px", f: (r) => esc(H.ago(r.last)), sv: (r) => r.last },
     ], s.by_key || [], { search: true, min: 900, sort: { h: "Calls", dir: -1 } });
-    if (st.tab === "user") body = `<p class="sub-t">Signed-in users of each project, from their tokens. Names come from sign-in events Watchdog has seen.</p>` + H.table([
+    if (st.tab === "user") body = `<p class="sub-t">Signed-in users of each project, from their tokens. Names come from sign-in events Guard has seen.</p>` + H.table([
       { h: "Project", w: "1.3fr", f: (r) => esc(H.tname(r.target_id)) },
       { h: "User", w: "1.8fr", f: (r) => esc(email.get(`${r.target_id}|${r.auth_user}`) || "") + `<br><span class="mono sub-t">${esc(r.auth_user)}</span>`, sv: (r) => email.get(`${r.target_id}|${r.auth_user}`) || r.auth_user },
       { h: "Calls", w: "90px", cls: "n", f: (r) => H.u0(r.n), sv: (r) => Number(r.n) },

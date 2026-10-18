@@ -1,4 +1,4 @@
-// NFG Watchdog › Performance: the slowest database queries per project (pg_stat_statements, taken hourly).
+// NFG Guard › Performance: the slowest database queries per project (pg_stat_statements, taken hourly).
 import { H } from "./watchdog.js";
 const esc = H.esc;
 

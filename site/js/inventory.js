@@ -1,4 +1,4 @@
-// NFG Watchdog › Integrations: projects and sites, edge functions, secrets and keys (names only), Entra / 365 apps,
+// NFG Guard › Integrations: projects and sites, edge functions, secrets and keys (names only), Entra / 365 apps,
 // API calls in and out, Netlify deploys.
 import { H } from "./watchdog.js";
 const esc = H.esc;
@@ -18,7 +18,7 @@ H.screen("targets", async (main, ctx) => {
     return { ...t, score: score.get(t.id) ?? null, open: f.length, hi: f.filter((o) => H.SEV_RANK[o.severity] >= 4).length,
       checked: t.meta?.posture?.at ?? t.meta?.at ?? t.last_seen };
   });
-  main.innerHTML = H.title("Projects & sites", "Everything Watchdog found to watch: Supabase projects and organisation, Netlify sites and team, the Entra tenant. New ones are picked up automatically.") +
+  main.innerHTML = H.title("Projects & sites", "Everything Guard found to watch: Supabase projects and organisation, Netlify sites and team, the Entra tenant. New ones are picked up automatically.") +
     H.table([
       { h: "Name", w: "2fr", f: (r) => `<b>${esc(r.name)}</b>${r.active ? "" : " " + H.tag("gone", "mute")}<br><span class="sub-t mono">${esc(r.url || r.ref)}</span>`, sv: (r) => r.name },
       { h: "Kind", w: "130px", f: (r) => H.kindTag(r.id), sv: (r) => r.id },
@@ -98,7 +98,7 @@ H.screen("secrets", async (main, ctx) => {
   if (ctx.stale()) return;
   const draw = () => {
     const rows = all.filter((r) => !st.kind || r.kind === st.kind);
-    main.innerHTML = H.title("Secrets & keys", "Where every secret lives and when it last changed. Watchdog keeps names and a fingerprint only, never the values, so it can tell you when one changes.") +
+    main.innerHTML = H.title("Secrets & keys", "Where every secret lives and when it last changed. Guard keeps names and a fingerprint only, never the values, so it can tell you when one changes.") +
       `<div class="chips">${[["", "All"], ...Object.entries(KIND)].map(([k, l]) => `<button class="chip${st.kind === k ? " on" : ""}" data-k="${k}">${esc(l)} (${all.filter((r) => !k || r.kind === k).length})</button>`).join("")}</div>` +
       H.table([
         { h: "Name", w: "2fr", f: (r) => r.kind.startsWith("entra") ? `<b>${esc(r.meta?.app ?? "")}</b><br><span class="sub-t">${esc(r.meta?.label || r.meta?.hint || "")}</span>` : `<b class="mono">${esc(r.name)}</b>${r.meta?.prefix ? `<br><span class="sub-t mono">${esc(r.meta.prefix)}…</span>` : ""}`, sv: (r) => r.meta?.app ?? r.name },

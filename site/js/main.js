@@ -1,4 +1,4 @@
-// NFG Watchdog: load order. Shell (sign-in), menu and Overview, then each area, then start.
+// NFG Guard: load order. Shell (sign-in), menu and Overview, then each area, then start.
 import { H } from "./watchdog.js";
 await import("./menu.js");       // menu, Overview, My account
 await import("./security.js");   // Findings, Suspicious activity, Change log, Performance findings (and the row-click helper)

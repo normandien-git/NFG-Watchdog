@@ -1,10 +1,10 @@
-// NFG Watchdog › Security: findings (posture, data exposure, secrets, config), suspicious activity, change log.
+// NFG Guard › Security: findings (posture, data exposure, secrets, config), suspicious activity, change log.
 // Performance findings use the same list with a preset filter.
 import { H } from "./watchdog.js";
 const esc = H.esc;
 
 const CATS = { access: "Access", data: "Data exposure", config: "Settings", secrets: "Secrets", exposure: "Internet exposure", activity: "Activity", performance: "Performance", reliability: "Reliability" };
-const SOURCES = { supabase: "Supabase", netlify: "Netlify", entra: "Entra / 365", watchdog: "Watchdog" };
+const SOURCES = { supabase: "Supabase", netlify: "Netlify", entra: "Entra / 365", watchdog: "Guard" };
 const STATUS = { open: ["Open", "err"], accepted: ["Risk accepted", "warn"], resolved: ["Resolved", "ok"] };
 
 export async function openFinding(id, after) {
@@ -68,7 +68,7 @@ function findingsScreen(key, preset) {
       if (ctx.stale()) return;
       (H._fstate ||= {})[key] = st;
       const count = (s) => rows.filter((r) => r.severity === s).length;
-      main.innerHTML = H.title(preset?.title ?? "Findings", preset?.sub ?? "Every problem Watchdog has found. Each one says what it is and what to do. Fixed problems resolve on the next check; you can accept a risk with a reason.") +
+      main.innerHTML = H.title(preset?.title ?? "Findings", preset?.sub ?? "Every problem Guard has found. Each one says what it is and what to do. Fixed problems resolve on the next check; you can accept a risk with a reason.") +
         `<div class="filters">` +
           `<div class="seg" role="group" aria-label="Status">${[["open", "Open"], ["accepted", "Accepted"], ["resolved", "Resolved"], ["all", "All"]].map(([k, l]) => `<button type="button" data-st="${k}" class="${st.status === k ? "on" : ""}">${l}</button>`).join("")}</div>` +
           `<label class="fld">Severity<select data-f="sev"><option value="">Any</option>${Object.entries(H.SEV).map(([k, l]) => `<option value="${k}"${st.sev === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>` +
@@ -156,7 +156,7 @@ H.screen("changes", async (main, ctx) => {
   H.loading(main);
   await H.targets();
   const st = { kind: "", days: 7 };
-  const KIND = { finding: "Findings", edge_function: "Edge functions", secret: "Edge function secrets", netlify_env: "Netlify variables", api_key: "API keys", entra_credential: "Entra credentials", outbound: "Outbound calls", user: "Watchdog users", setting: "Watchdog settings" };
+  const KIND = { finding: "Findings", edge_function: "Edge functions", secret: "Edge function secrets", netlify_env: "Netlify variables", api_key: "API keys", entra_credential: "Entra credentials", outbound: "Outbound calls", user: "Guard users", setting: "Guard settings" };
   const draw = async () => {
     const rows = await H.all(() => {
       let x = H.db.from("wd_change").select("at, target_id, kind, item, action, detail, by_user").gte("at", new Date(Date.now() - st.days * 86400e3).toISOString()).order("at", { ascending: false });
@@ -172,7 +172,7 @@ H.screen("changes", async (main, ctx) => {
         { h: "Kind", w: "150px", f: (r) => esc(KIND[r.kind] || r.kind) },
         { h: "Change", w: "100px", f: (r) => H.tag(r.action, ["opened", "reopened", "removed"].includes(r.action) ? "err" : ["resolved", "added"].includes(r.action) ? "ok" : "mute") },
         { h: "Item", w: "3fr", f: (r) => esc(r.item) + (r.detail?.severity ? ` ${H.sev(r.detail.severity)}` : "") + (r.detail?.note ? `<br><span class="sub-t">${esc(r.detail.note)}</span>` : "") },
-        { h: "Where", w: "1.3fr", f: (r) => esc(r.target_id ? H.tname(r.target_id) : "Watchdog") },
+        { h: "Where", w: "1.3fr", f: (r) => esc(r.target_id ? H.tname(r.target_id) : "Guard") },
         { h: "By", w: "1fr", f: (r) => esc(r.by_user || "collector") },
       ], rows, { search: true, min: 900, limit: 1000, empty: "No changes in this period." });
     main.querySelector("[data-k]").onchange = (e) => { st.kind = e.target.value; draw(); };

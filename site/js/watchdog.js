@@ -380,8 +380,29 @@ function loginScreen(msg) {
   c.querySelector("[data-forgot]").onclick = async () => {
     const email = f.email.value.trim().toLowerCase();
     if (!email) { errLine(c, "Type your email first, then click Forgot your password."); return; }
-    await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-    loginScreen("If that address has a Watchdog account, a reset link is on its way. You will still need your authenticator app.");
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error && /rate limit/i.test(error.message)) { errLine(c, "Too many reset emails in the last hour. Wait a while, or use the last code you were sent."); }
+    resetCode(email, error && !/rate limit/i.test(error.message) ? error.message : "");
+  };
+}
+
+// password reset by emailed code (links get used up by Microsoft's link scanner before the person clicks them)
+function resetCode(email, msg) {
+  const c = card(`<h2>Reset your password</h2><p class="sub-t">If ${H.esc(email)} has a Watchdog account, an email from noreply@normandien.co.za is on its way with a reset code. Type it here. You will still need your authenticator app.</p>` +
+    (msg ? `<div class="banner">${H.esc(msg)}</div>` : "") +
+    `<form data-f class="wd-stack"><label class="fld">Code from the email<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required></label>` +
+    `<p class="dlg-err" data-err hidden></p><button class="btn pri wide" type="submit">Continue</button></form><button class="linkbtn" data-back type="button">Back to sign-in</button>`);
+  const f = c.querySelector("[data-f]"); f.code.focus();
+  c.querySelector("[data-back]").onclick = () => loginScreen();
+  f.onsubmit = async (e) => {
+    e.preventDefault(); errLine(c, "");
+    const b = f.querySelector("button"); b.disabled = true;
+    const { error } = await sb.auth.verifyOtp({ email, token: f.code.value.trim(), type: "recovery" });
+    b.disabled = false;
+    if (error) { errLine(c, /expired|invalid/i.test(error.message) ? "That code is wrong or has expired. Use the code in the newest email, or go back and ask for a new one." : error.message); f.code.select(); return; }
+    H.recovering = true;
+    try { sessionStorage.setItem("wd.recover", "1"); } catch {}
+    gate();
   };
 }
 
@@ -462,10 +483,18 @@ sb.auth.onAuthStateChange((ev) => {
   if (ev === "SIGNED_OUT" && H.me) { H.me = null; loginScreen("Your session ended. Sign in again."); }
 });
 
+// an expired or used sign-in link lands here as #error=...; say so in plain words and clear the address bar
+let linkErr = (() => {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.get("error")) return "";
+  try { history.replaceState(null, "", location.pathname); } catch {}
+  return h.get("error_code") === "otp_expired" ? "That email link has expired or was already used. Click Forgot your password? to get a reset code instead." : (h.get("error_description") || "That link did not work.");
+})();
+
 let started = false;
 async function gate() {
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) return loginScreen();
+  if (!session) { const m = linkErr; linkErr = ""; return loginScreen(m); }
   const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal?.currentLevel !== "aal2") return aal?.nextLevel === "aal2" ? mfaChallenge() : mfaEnrol();
   try { H.recovering = H.recovering || sessionStorage.getItem("wd.recover") === "1"; } catch {}

@@ -5,5 +5,5 @@ export const WD_URL = "https://opckmndqounbhqksouxx.supabase.co";              /
 export const WD_KEY = "sb_publishable_nEj3oPiULc6TZsZe4QGPnA_p3CQqL4y";       // publishable: safe in the browser, RLS (members at aal2) does the rest
 export const PORTAL_URL = "https://auth.normandien.co.za";                     // NFG Home, for the All apps link
 export const IDLE_MINUTES = 30;                                                // signed out after this long without activity
-export const APP_BUILD = { app: "Watchdog", version: "0.05", date: "2026-10-18", time: "15:10" };
+export const APP_BUILD = { app: "Watchdog", version: "0.06", date: "2026-10-18", time: "15:20" };
 window.APP_BUILD = APP_BUILD;

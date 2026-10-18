@@ -94,6 +94,12 @@ Deno.serve(async (req) => {
       } else {
         await sendMail(user.new_email || user.email, c.subject, page(c.lead, btn(verifyLink(d.token_hash, type, redirect), c.button)));
       }
+    } else if (type === "recovery" || type === "magiclink" || type === "email") {
+      // code only, no link: Microsoft's Safe Links scanner opens links before the person does and uses them up
+      const recovery = type === "recovery";
+      await sendMail(user.email, recovery ? "Your NFG Watchdog password reset code" : "Your NFG Watchdog sign-in code",
+        page(recovery ? "Someone asked to reset the password for your NFG Watchdog account. If it was you, type this code on the Watchdog reset screen:" : "Type this code in NFG Watchdog to sign in:",
+          `<p style="font-size:28px;font-weight:900;letter-spacing:.25em;margin:18px 0">${esc(d.token)}</p><p style="color:#55585c;font-size:12px">The code works once and expires within an hour. Only the newest code works.</p>`));
     } else {
       const c = COPY[type] ?? COPY.magiclink;
       await sendMail(user.email, c.subject, page(c.lead, btn(verifyLink(d.token_hash, type, redirect), c.button)));

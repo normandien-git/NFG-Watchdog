@@ -388,7 +388,7 @@ function loginScreen(msg) {
 async function mfaEnrol() {
   const { data: fl } = await sb.auth.mfa.listFactors();
   for (const f of (fl?.all ?? []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: f.id });
-  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: `Watchdog ${new Date().toISOString().slice(0, 16)}` });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", issuer: "NFG Watchdog", friendlyName: `Watchdog ${new Date().toISOString().slice(0, 16)}` });
   if (error) { loginScreen(error.message); return; }
   const c = card(`<h2>Set up your authenticator app</h2><p class="sub-t">Watchdog needs a code from an authenticator app (Microsoft Authenticator, Google Authenticator, 1Password…) every time you sign in. Scan this code with the app.</p>` +
     `<img class="wd-qr" src="${H.esc(data.totp.qr_code)}" alt="QR code for your authenticator app">` +

@@ -109,6 +109,13 @@ async function siteOne(site: any, account: any, knownRefs: Set<string>) {
   await step("live scan", async () => {
     const c = await crawl(url);
     stats.scan = { files: c.files, bytes: c.bytes, status: c.status, projects: c.projects };
+    if (c.status === 401 || c.status === 403) {
+      // password / Netlify visitor protection: the scan only sees Netlify's sign-in wall, so its headers say nothing about the site
+      F.push({ fingerprint: fp("nf", site.id, "protected"), source: "netlify", target_id: T, check_code: "site.protected", category: "exposure", severity: "info",
+        title: `${name}: protected, so the live scan could not look inside`, detail: `${url} answered ${c.status}. Headers and leaked-secret checks are skipped while it is private.`,
+        remediation: "Nothing to do. Once it is public (or on its custom domain), the next hourly check scans it." });
+      return;
+    }
     F.push(...headerChecks(site.id, name, url, c.headers));
     const byKind = new Map<string, typeof c.hits>();
     for (const h of c.hits) byKind.set(h.code, [...(byKind.get(h.code) ?? []), h]);
@@ -118,7 +125,7 @@ async function siteOne(site: any, account: any, knownRefs: Set<string>) {
         title: `${name}: ${h0.name} in the published site`, detail: `Found ${hs.length}× in ${[...new Set(hs.map((x) => x.file))].slice(0, 5).join(", ")} (e.g. ${h0.sample}). Anyone who opens the site can read it.`,
         remediation: h0.sev === "low" ? "Check the key is restricted to your domains and APIs." : "Treat it as compromised: rotate it today, remove it from the code, redeploy.", meta: { files: [...new Set(hs.map((x) => x.file))], count: hs.length } });
     }
-    for (const ref of c.projects) if (!knownRefs.has(ref)) F.push({ fingerprint: fp("nf", site.id, "unknown_project", ref), source: "netlify", target_id: T, check_code: "site.unknown_supabase", category: "data", severity: "medium",
+    for (const ref of c.projects) if (knownRefs.size && !knownRefs.has(ref)) F.push({ fingerprint: fp("nf", site.id, "unknown_project", ref), source: "netlify", target_id: T, check_code: "site.unknown_supabase", category: "data", severity: "medium",
       title: `${name} talks to Supabase project ${ref}, which Watchdog cannot see`, detail: "The project is not in the organisation the Watchdog access token covers. Data may be going somewhere unmanaged.",
       remediation: "Find out whose project it is; move it into the NFG organisation or remove it.", meta: { ref } });
   });

@@ -74,7 +74,7 @@ export async function runEntra() {
   });
   const sps = new Map<string, any>();
   await step("service principals", async () => {
-    const list = await graphAll(`/v1.0/servicePrincipals?$filter=appOwnerOrganizationId eq ${TENANT}&$select=id,appId,displayName,accountEnabled&$top=999`);
+    const list = await graphAll(`/v1.0/servicePrincipals?$filter=appOwnerOrganizationId eq ${TENANT}&$count=true&$select=id,appId,displayName,accountEnabled&$top=999`);
     for (const sp of list) sps.set(sp.appId, sp);
   });
   const lastSign = new Map<string, string>();

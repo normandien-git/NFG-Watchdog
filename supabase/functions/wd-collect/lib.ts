@@ -156,7 +156,7 @@ export const SECRET_PATTERNS: { code: string; name: string; re: RegExp; sev: Sev
   { code: "sb_pat", name: "Supabase personal access token", re: /sbp_[a-f0-9]{40}/g, sev: "critical" },
   { code: "netlify_pat", name: "Netlify personal access token", re: /nfp_[A-Za-z0-9]{30,}/g, sev: "critical" },
   { code: "aws_key", name: "AWS access key", re: /AKIA[0-9A-Z]{16}/g, sev: "critical" },
-  { code: "private_key", name: "Private key", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g, sev: "critical" },
+  { code: "private_key", name: "Private key", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----(?:\\[rn]|\s)+[A-Za-z0-9+\/=]{64,}/g, sev: "critical" },   // the marker plus real key data, not code that builds a PEM
   { code: "stripe_live", name: "Stripe live secret key", re: /sk_live_[0-9a-zA-Z]{20,}/g, sev: "critical" },
   { code: "sendgrid", name: "SendGrid API key", re: /SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g, sev: "critical" },
   { code: "entra_secret", name: "Microsoft Entra client secret", re: /(?<![A-Za-z0-9_~.-])[A-Za-z0-9_~.-]{3}\dQ~[A-Za-z0-9_~.-]{31,34}(?![A-Za-z0-9_~.-])/g, sev: "critical" },

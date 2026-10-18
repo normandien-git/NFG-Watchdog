@@ -1,0 +1,23 @@
+# NFG Watchdog: plain HTML, no build step. Netlify publishes site/.
+[build]
+  publish = "site"
+  command = ""
+
+# Watchdog holds the security picture of every other app, so it locks itself down hard.
+# Scripts only from this site and jsDelivr (supabase-js), data only to the NFG-Watchdog project, no framing, no inline script.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://opckmndqounbhqksouxx.supabase.co wss://opckmndqounbhqksouxx.supabase.co https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Cross-Origin-Opener-Policy = "same-origin"
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache"

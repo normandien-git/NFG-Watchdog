@@ -4,7 +4,7 @@
 // Jobs: logs (15 min), supabase (hourly posture), netlify (hourly), entra (hourly), prune (nightly, 90 days), all.
 //
 // Secrets (Edge Functions › Secrets on NFG-Watchdog):
-//   SUPABASE_PAT         access token of a read-only member of the NFG Supabase organisation
+//   WD_SUPABASE_PAT      access token of a read-only member of the NFG Supabase organisation
 //   NETLIFY_TOKEN        Netlify personal access token (read)
 //   ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET   the Watchdog app registration (directory read only)
 //   MAIL_CLIENT_ID / MAIL_CLIENT_SECRET [/ MAIL_TENANT_ID]   the existing "NFG Normandien – Mail" app (Mail.Send) for alerts
@@ -54,7 +54,7 @@ async function selfCheck() {
   const F: Finding[] = [];
   const base = { source: "watchdog", target_id: null, category: "config" as const };
   if (!supabaseReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "supabase"), check_code: "watchdog.no_supabase", severity: "high", title: "Watchdog cannot see the Supabase projects yet",
-    detail: "The SUPABASE_PAT secret is not set, so no project is being checked.", remediation: "Create an access token for a read-only org member and save it as SUPABASE_PAT on NFG-Watchdog › Edge Functions › Secrets." });
+    detail: "The WD_SUPABASE_PAT secret is not set, so no project is being checked.", remediation: "Create an access token for a read-only org member and save it as WD_SUPABASE_PAT on NFG-Watchdog › Edge Functions › Secrets." });
   if (!netlifyReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "netlify"), check_code: "watchdog.no_netlify", severity: "medium", title: "Watchdog cannot see Netlify yet",
     detail: "The NETLIFY_TOKEN secret is not set.", remediation: "Netlify › User settings › Applications › New access token; save it as NETLIFY_TOKEN." });
   if (!entraReady()) F.push({ ...base, fingerprint: fp("wd", "conn", "entra"), check_code: "watchdog.no_entra", severity: "medium", title: "Watchdog cannot see Entra ID / 365 yet",

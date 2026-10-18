@@ -5,7 +5,7 @@ import { db, q, sha, fp, iso, nowIso, pool, getJson, settings, setConnector, ups
   syncInventory, insertMany, ipInList, isPrivateIp, type Finding, type Sev } from "./lib.ts";
 
 const API = "https://api.supabase.com/v1";
-const PAT = Deno.env.get("SUPABASE_PAT") ?? "";
+const PAT = Deno.env.get("WD_SUPABASE_PAT") ?? "";   // Supabase reserves the SUPABASE_ prefix for its own secrets
 const H = () => ({ Authorization: `Bearer ${PAT}`, "content-type": "application/json" });
 const mgmt = (path: string, init: RequestInit = {}) => getJson(API + path, { ...init, headers: { ...H(), ...(init.headers || {}) } });
 const tid = (ref: string) => `supabase:${ref}`;
@@ -301,7 +301,7 @@ async function orgs(list: { org: string }[]) {
 }
 
 export async function runPosture() {
-  if (!PAT) { await setConnector("supabase", { ok: false, note: "SUPABASE_PAT secret not set" }); return { skipped: "SUPABASE_PAT not set" }; }
+  if (!PAT) { await setConnector("supabase", { ok: false, note: "WD_SUPABASE_PAT secret not set" }); return { skipped: "WD_SUPABASE_PAT not set" }; }
   const s = await settings();
   const list = await projects();
   const res = await pool(list, 3, (p) => postureOne(p, s));
@@ -491,7 +491,7 @@ async function logsOne(p: { ref: string; name: string }, s: Record<string, any>)
 }
 
 export async function runLogs() {
-  if (!PAT) return { skipped: "SUPABASE_PAT not set" };
+  if (!PAT) return { skipped: "WD_SUPABASE_PAT not set" };
   const s = await settings();
   const list = await projects();
   const res = await pool(list, 3, (p) => logsOne(p, s));

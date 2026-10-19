@@ -242,6 +242,13 @@ async function postureOne(p: { ref: string; name: string }, s: Record<string, an
     for (const c of conns) {
       if (!c.addr || isPrivateIp(c.addr) || ipInList(c.addr, known)) continue;
       if (/^(postgrest|realtime|supavisor|Supabase|pg_net|pgbouncer|storage|gotrue|auth)/i.test(c.app) || /^supabase_|^authenticator$/.test(c.role)) continue;
+      // the project's own edge functions: Supabase runs them in AWS (2a05:d000::/25) and they connect with postgres.js / Deno
+      if (/^2a05:d0[0-7][0-9a-f]:/i.test(c.addr) && /postgres\.js|deno|supabase/i.test(c.app)) {
+        add({ fingerprint: fp("sb", ref, "conn.edge", c.role, c.app), source: "supabase", target_id: T, check_code: "connection.edge_function", category: "access", severity: "info",
+          title: `An edge function connects to the database as ${c.role}`, detail: `${c.n} connection(s) from Supabase's edge network (${c.addr}), program "${c.app}". This is one of the project's own edge functions using a direct database connection.`,
+          remediation: c.role === "postgres" ? "Give the function its own login limited to the tables it needs, instead of the admin user (see abco-pull on NFG-DataWarehouse)." : "Nothing to do.", meta: c });
+        continue;
+      }
       add({ fingerprint: fp("sb", ref, "conn.direct", c.role, c.addr, new Date().toISOString().slice(0, 10)), source: "supabase", target_id: T, check_code: "connection.direct", category: "activity", severity: c.role === "postgres" ? "high" : "medium",
         title: `Direct database login as ${c.role} from ${c.addr}`, detail: `${c.n} connection(s), application "${c.app || "unknown"}". Not on the known addresses list.`,
         remediation: "If this is you or a known server, add the address in Settings › Known addresses; otherwise change the database password now.", meta: c });

@@ -79,13 +79,14 @@ function findingsScreen(key, preset) {
         `<div class="chips">${["critical", "high", "medium", "low", "info"].map((s) => `<span class="sub-t">${H.sev(s)} ${count(s)}</span>`).join("")}</div>` +
         H.table([
           { h: "Severity", w: "92px", f: (r) => H.sev(r.severity), sv: (r) => -H.SEV_RANK[r.severity] },
-          { h: "Finding", w: "3fr", f: (r) => `<b>${esc(r.title)}</b>${r.note ? `<br><span class="sub-t">${esc(r.note)}</span>` : ""}`, sv: (r) => r.title },
+          { h: "Finding", w: "3fr", f: (r) => `<b>${esc(r.title)}</b>`, sv: (r) => r.title },
+          { h: "Note", w: "1.5fr", f: (r) => r.note ? `${esc(r.note)}${r.accepted_until ? `<br><span class="sub-t">until ${esc(H.shortDate(r.accepted_until))}</span>` : ""}` : `<span class="sub-t">—</span>`, sv: (r) => r.note || "" },
           { h: "Where", w: "1.3fr", f: (r) => `${esc(H.tname(r.target_id))}<br>${H.kindTag(r.target_id)}`, sv: (r) => H.tname(r.target_id) },
           { h: "Type", w: "120px", f: (r) => esc(CATS[r.category] || r.category), sv: (r) => r.category },
           { h: "First seen", w: "110px", f: (r) => esc(H.shortDate(r.first_seen)), sv: (r) => r.first_seen },
           { h: "Last seen", w: "110px", f: (r) => esc(H.ago(r.last_seen)), sv: (r) => r.last_seen },
           { h: "Status", w: "110px", f: (r) => H.tag(STATUS[r.status][0], STATUS[r.status][1]), sv: (r) => r.status },
-        ], rows, { search: "Search findings", sort: { h: "Severity" }, min: 900, empty: st.status === "open" ? "Nothing open. Good." : "Nothing here.", rowAttrs: () => "", limit: 500 });
+        ], rows, { search: "Search findings", sort: { h: "Severity" }, min: 1050, empty: st.status === "open" ? "Nothing open. Good." : "Nothing here.", rowAttrs: () => "", limit: 500 });
       H.rowClick(main, (r) => openFinding(r.id, draw));
       main.querySelectorAll("[data-st]").forEach((b) => { b.onclick = () => { st.status = b.dataset.st; draw(); }; });
       main.querySelectorAll("[data-f]").forEach((s) => { s.onchange = () => { st[s.dataset.f] = s.value; draw(); }; });

@@ -128,7 +128,7 @@ H.screen("entra", async (main, ctx) => {
   for (const c of creds) { const a = c.meta?.app_id; if (c.expires_at && new Date(c.expires_at) > new Date() && (!next.has(a) || c.expires_at < next.get(a))) next.set(a, c.expires_at); }
   main.innerHTML = H.title("Entra / 365 apps", "Our app registrations: what each may do in Microsoft 365, when its secrets expire, when it was last used and how often people or the app signed in through it.") +
     H.table([
-      { h: "App", w: "1.8fr", f: (r) => `<b>${esc(r.display_name)}</b>${r.meta?.enabled === false ? " " + H.tag("disabled", "mute") : ""}<br><span class="sub-t mono">${esc(r.app_id)}</span>`, sv: (r) => r.display_name },
+      { h: "App", w: "1.8fr", f: (r) => `<b>${esc(r.display_name)}</b>${r.meta?.deactivated ? " " + H.tag("deactivated", "mute") : r.meta?.enabled === false ? " " + H.tag("disabled", "mute") : ""}<br><span class="sub-t mono">${esc(r.app_id)}</span>`, sv: (r) => r.display_name },
       { h: "Can do (no user)", w: "2fr", f: (r) => (r.permissions || []).filter((p) => p.type === "Application" && p.granted).map((p) => H.tag(p.name, HIGH.includes(p.name) ? "err" : "mute")).join(" ") || `<span class="sub-t">nothing</span>`,
         sv: (r) => (r.permissions || []).filter((p) => p.type === "Application" && p.granted && HIGH.includes(p.name)).length },
       { h: "On behalf of users", w: "1.4fr", f: (r) => `<span class="sub-t">${esc((r.permissions || []).filter((p) => p.type === "Delegated").map((p) => p.name).join(", "))}</span>` },
@@ -136,7 +136,7 @@ H.screen("entra", async (main, ctx) => {
       { h: "Last used", w: "110px", f: (r) => esc(r.last_sign_in ? H.ago(r.last_sign_in) : "never"), sv: (r) => r.last_sign_in || "" },
       { h: "Sign-ins · 30 d", w: "100px", cls: "n", f: (r) => H.u0(r.sign_ins_30d || 0), sv: (r) => r.sign_ins_30d || 0 },
       { h: "Owners", w: "1.2fr", f: (r) => esc((r.owners || []).join(", ")) || H.tag("none", "warn") },
-    ], apps, { search: true, min: 1150, rowAttrs: () => "", empty: "Nothing yet. Set up the Entra connection (Admin › Collector runs)." });
+    ], apps.sort((a, b) => (a.meta?.deactivated ? 1 : 0) - (b.meta?.deactivated ? 1 : 0)), { search: true, min: 1150, rowAttrs: () => "", empty: "Nothing yet. Set up the Entra connection (Admin › Collector runs)." });
   H.rowClick(main, async (a) => {
     const sis = await H.q(H.db.from("wd_entra_signin").select("at, principal, is_sp, ip, city, country, ok, failure, resource").eq("app_id", a.app_id).order("at", { ascending: false }).limit(200));
     const byWho = new Map(); for (const s of sis) { const k = s.principal || "?"; const x = byWho.get(k) ?? { n: 0, ips: new Set(), last: s.at }; x.n++; if (s.ip) x.ips.add(`${s.ip} ${s.country || ""}`); byWho.set(k, x); }

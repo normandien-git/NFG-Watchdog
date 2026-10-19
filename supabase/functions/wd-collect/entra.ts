@@ -72,6 +72,12 @@ export async function runEntra() {
   await step("applications", async () => {
     apps = await graphAll(`/v1.0/applications?$select=id,appId,displayName,createdDateTime,signInAudience,passwordCredentials,keyCredentials,requiredResourceAccess,web,spa,publicClient&$expand=owners($select=userPrincipalName,displayName)&$top=999`);
   });
+  // deactivated app registrations (Entra › App registrations › Deactivate): they can't get tokens, so no findings for them
+  const off = new Set<string>();
+  await step("deactivated apps", async () => {
+    const list = await graphAll(`/beta/applications?$select=appId,isDisabled&$top=999`);
+    for (const a of list) if (a.isDisabled === true) off.add(a.appId);
+  });
   const sps = new Map<string, any>();
   await step("service principals", async () => {
     const list = await graphAll(`/v1.0/servicePrincipals?$filter=appOwnerOrganizationId eq ${TENANT}&$count=true&$select=id,appId,displayName,accountEnabled&$top=999`);
@@ -115,21 +121,22 @@ export async function runEntra() {
     const last = lastSign.get(app.appId) ?? null;
     appRows.push({ app_id: app.appId, object_id: app.id, sp_id: sp?.id ?? null, display_name: app.displayName, created_src: app.createdDateTime, audience: app.signInAudience,
       permissions: perms, redirect_uris: redirects, owners: (app.owners ?? []).map((o: any) => o.userPrincipalName ?? o.displayName), last_sign_in: last, last_seen: nowIso(), active: true,
-      meta: { enabled: sp?.accountEnabled ?? null, secrets: (app.passwordCredentials ?? []).length, certs: (app.keyCredentials ?? []).length } });
+      meta: { enabled: sp?.accountEnabled ?? null, deactivated: off.has(app.appId), secrets: (app.passwordCredentials ?? []).length, certs: (app.keyCredentials ?? []).length } });
+    const Fx: Finding[] = off.has(app.appId) ? [] : F;   // deactivated: kept in the inventory, nothing to report on
 
     const name = app.displayName;
     const base = { source: "entra", target_id: tgt };
     // permissions
     for (const p of perms.filter((p) => p.type === "Application" && p.granted && HIGH[p.name])) {
-      F.push({ ...base, fingerprint: fp("en", app.appId, "perm", p.name), check_code: "entra.high_permission", category: "access", severity: HIGH[p.name],
+      Fx.push({ ...base, fingerprint: fp("en", app.appId, "perm", p.name), check_code: "entra.high_permission", category: "access", severity: HIGH[p.name],
         title: `${name} can ${p.name} across the whole tenant`, detail: `Application permission ${p.name} (${p.resource}) is granted. Anyone holding this app's secret can use it without a user signing in.`,
         remediation: p.name.startsWith("Mail.") ? "Limit it to the mailboxes it needs with an Exchange application access policy (or RBAC for Applications)." : "Remove it if not needed, or swap it for a narrower permission.", meta: { app_id: app.appId, permission: p.name } });
     }
-    if (app.signInAudience && app.signInAudience !== "AzureADMyOrg") F.push({ ...base, fingerprint: fp("en", app.appId, "audience"), check_code: "entra.multitenant", category: "access", severity: "medium",
+    if (app.signInAudience && app.signInAudience !== "AzureADMyOrg") Fx.push({ ...base, fingerprint: fp("en", app.appId, "audience"), check_code: "entra.multitenant", category: "access", severity: "medium",
       title: `${name} accepts sign-ins from other organisations`, detail: `Sign-in audience is ${app.signInAudience}.`, remediation: "Set Supported account types to 'this organisational directory only' unless outsiders must sign in." });
     const httpRedirects = redirects.filter((u: string) => /^http:\/\/(?!localhost|127\.0\.0\.1)/.test(u));
     const wild = redirects.filter((u: string) => u.includes("*"));
-    if (httpRedirects.length || wild.length) F.push({ ...base, fingerprint: fp("en", app.appId, "redirects"), check_code: "entra.redirects", category: "config", severity: "medium",
+    if (httpRedirects.length || wild.length) Fx.push({ ...base, fingerprint: fp("en", app.appId, "redirects"), check_code: "entra.redirects", category: "config", severity: "medium",
       title: `${name} has unsafe sign-in redirect addresses`, detail: [...httpRedirects, ...wild].join(", "), remediation: "Use exact https addresses only." });
     // credentials
     const creds = [...(app.passwordCredentials ?? []).map((c: any) => ({ ...c, kind: "entra_password" })), ...(app.keyCredentials ?? []).map((c: any) => ({ ...c, kind: "entra_certificate" }))];
@@ -142,16 +149,16 @@ export async function runEntra() {
       if (!end) continue;
       const days = Math.round((end - Date.now()) / 86400e3);
       if (days >= 0) live++;
-      if (days < 0 && days > -90) F.push({ ...base, fingerprint: fp("en", app.appId, "cred.expired", c.keyId), check_code: "entra.credential_expired", category: "secrets", severity: "low",
+      if (days < 0 && days > -90) Fx.push({ ...base, fingerprint: fp("en", app.appId, "cred.expired", c.keyId), check_code: "entra.credential_expired", category: "secrets", severity: "low",
         title: `${label}: ${c.kind === "entra_password" ? "secret" : "certificate"} expired ${-days} days ago`, detail: "If something still uses it, it has stopped working.", remediation: "Delete the expired credential; create a new one only if the integration still runs." });
-      else if (days >= 0 && days <= 30) F.push({ ...base, fingerprint: fp("en", app.appId, "cred.expiring", c.keyId), check_code: "entra.credential_expiring", category: "reliability", severity: days <= 7 ? "high" : "medium",
+      else if (days >= 0 && days <= 30) Fx.push({ ...base, fingerprint: fp("en", app.appId, "cred.expiring", c.keyId), check_code: "entra.credential_expiring", category: "reliability", severity: days <= 7 ? "high" : "medium",
         title: `${label}: ${c.kind === "entra_password" ? "secret" : "certificate"} expires in ${days} days`, detail: `Expires ${c.endDateTime.slice(0, 10)}. The integration stops working then.`, remediation: "Create a new secret, update it where it is used (edge function secret, Netlify env), then delete the old one." });
-      if (start && end - start > 2 * 366 * 86400e3 && c.kind === "entra_password") F.push({ ...base, fingerprint: fp("en", app.appId, "cred.long", c.keyId), check_code: "entra.credential_long", category: "secrets", severity: "low",
+      if (start && end - start > 2 * 366 * 86400e3 && c.kind === "entra_password") Fx.push({ ...base, fingerprint: fp("en", app.appId, "cred.long", c.keyId), check_code: "entra.credential_long", category: "secrets", severity: "low",
         title: `${label}: secret valid for ${Math.round((end - start) / 86400e3 / 365)} years`, detail: "Long-lived secrets are hard to track and likely to leak.", remediation: "Use 6–12 month secrets, or a certificate." });
     }
-    if (live && (!last || Date.now() - Date.parse(last) > 90 * 86400e3)) F.push({ ...base, fingerprint: fp("en", app.appId, "unused"), check_code: "entra.unused_with_credentials", category: "access", severity: "low",
+    if (live && (!last || Date.now() - Date.parse(last) > 90 * 86400e3)) Fx.push({ ...base, fingerprint: fp("en", app.appId, "unused"), check_code: "entra.unused_with_credentials", category: "access", severity: "low",
       title: `${name} has not been used for 90 days but has live credentials`, detail: last ? `Last sign-in ${last.slice(0, 10)}.` : "No sign-in recorded.", remediation: "Delete its secrets (or the app) if nothing uses it any more." });
-    if (!(app.owners ?? []).length) F.push({ ...base, fingerprint: fp("en", app.appId, "noowner"), check_code: "entra.no_owner", category: "config", severity: "info",
+    if (!(app.owners ?? []).length) Fx.push({ ...base, fingerprint: fp("en", app.appId, "noowner"), check_code: "entra.no_owner", category: "config", severity: "info",
       title: `${name} has no owner`, detail: "Nobody is named as responsible for it.", remediation: "Add an owner in Entra › App registrations › Owners." });
   });
   await insertMany("wd_entra_app", appRows, { onConflict: "app_id" });

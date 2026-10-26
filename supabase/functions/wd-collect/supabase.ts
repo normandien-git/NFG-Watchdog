@@ -19,7 +19,8 @@ async function sql(ref: string, query: string): Promise<any[]> {
   return await mgmt(`/projects/${ref}/database/query`, { method: "POST", body: JSON.stringify({ query }) }) ?? [];
 }
 async function logs(ref: string, sqlText: string, start: string, end: string): Promise<any[]> {
-  const u = `/projects/${ref}/analytics/endpoints/logs.all?` + new URLSearchParams({ sql: sqlText, iso_timestamp_start: start, iso_timestamp_end: end });
+  // logs.all was removed by Supabase (410 Gone, Oct 2026); /logs takes the same ClickHouse SQL and time range
+  const u = `/projects/${ref}/analytics/endpoints/logs?` + new URLSearchParams({ sql: sqlText, iso_timestamp_start: start, iso_timestamp_end: end });
   const r = await mgmt(u);
   if (r?.error) throw new Error(`logs ${ref}: ${typeof r.error === "string" ? r.error : JSON.stringify(r.error).slice(0, 300)}`);
   return r?.result ?? [];
@@ -44,6 +45,28 @@ export async function projects() {
 }
 
 // ================================================================== posture
+// organisation members by Supabase user id (loaded once per posture run): who ran SQL through the Management API
+let MEMBERS = new Map<string, { email: string; name: string; role: string; mfa: boolean | undefined }>();
+const ORG_MEMBERS = new Map<string, any[]>();
+async function loadMembers(list: { org: string }[]) {
+  MEMBERS = new Map(); ORG_MEMBERS.clear();
+  for (const org of [...new Set(list.map((p) => p.org).filter(Boolean))]) {
+    try {
+      const members: any[] = await mgmt(`/organizations/${org}/members`) ?? [];
+      ORG_MEMBERS.set(org, members);
+      for (const m of members) if (m.user_id) MEMBERS.set(m.user_id, { email: m.email, name: m.user_name, role: m.role_name, mfa: m.mfa_enabled });
+    } catch { /* orgs() reports the error */ }
+  }
+}
+const MGMT_ACTOR_SQL = `
+select extract(event_message, '-- user: ([a-z_]+):') as kind, extract(event_message, '-- user: [a-z_]+:([0-9a-f-]{36})') as uid,
+  extract(event_message, '-- source: [A-Z]+ ([^\\n]+)') as src, count() as n
+from logs where source = 'postgres_logs' and log_attributes['parsed.application_name'] = 'mgmt-api' and event_message like '%-- user:%'
+group by kind, uid, src order by n desc limit 20`;
+// "-- user:" kinds: session = dashboard login, scoped_pat = OAuth token of a person (Claude connector, CLI login), pat = personal
+// access token; those carry the person's Supabase user id. oauth = an OAuth grant (e.g. the Supabase MCP server): the id is the
+// grant, not the person, so it cannot be matched to a member.
+const PERSON_KINDS = new Set(["session", "scoped_pat", "pat"]);
 const ADVISOR_SEV: Record<string, Sev> = {
   rls_disabled_in_public: "critical", policy_exists_rls_disabled: "critical", security_definer_view: "high",
   sensitive_columns_exposed: "critical", auth_users_exposed: "critical", rls_references_user_metadata: "high",
@@ -239,7 +262,40 @@ async function postureOne(p: { ref: string; name: string }, s: Record<string, an
     if (r.max_conn && total / r.max_conn > 0.8) P.push({ fingerprint: fp("sb", ref, "conn.high"), source: "supabase", target_id: T, check_code: "connections.high", category: "reliability", severity: "medium",
       title: `${total} of ${r.max_conn} database connections in use`, detail: "The database is close to refusing new connections.", remediation: "Use the pooler (port 6543) for apps and scripts; look for connection leaks." });
     const known = s.known_ips || [];
+    // SQL run through Supabase's Management API (dashboard SQL editor, Claude / MCP, CLI, access tokens) shows up as
+    // application "mgmt-api" logged in as postgres. That is an organisation member, not a database password login:
+    // name them from the "-- user:" tag Supabase writes into the query, and only raise it when the person is unknown,
+    // no longer a member, or has no MFA.
+    // (Guard's own checks also arrive as mgmt-api, but as supabase_read_only_user: only postgres sessions count)
+    const viaApi = conns.filter((c) => c.app === "mgmt-api" && c.role === "postgres" && c.addr && !ipInList(c.addr, known));
+    if (viaApi.length) {
+      const end = new Date(), start = new Date(end.getTime() - 3 * 3600e3);
+      const actors: any[] = await logs(ref, MGMT_ACTOR_SQL, iso(start), iso(end)).catch(() => []);
+      const seen = new Set<string>();
+      for (const a of actors.length ? actors : [{ kind: "", uid: "", n: 0 }]) {
+        const key = a.uid || "unknown";
+        if (seen.has(key)) continue; seen.add(key);
+        const person = PERSON_KINDS.has(a.kind) && !!a.uid;          // the id is a Supabase user we can look up
+        const m = person ? MEMBERS.get(a.uid) : undefined;
+        const mcp = /\/mcp\b/.test(a.src || "");
+        const how = mcp ? "the Supabase MCP connector (Claude)" : a.kind === "session" ? "the Supabase dashboard" : a.kind === "scoped_pat" ? "a connected app such as Claude (OAuth token)"
+          : a.kind === "pat" ? "a personal access token" : a.kind === "oauth" ? "an OAuth-connected app" : "the Supabase dashboard or API";
+        const who = m ? (m.email || m.name) : person ? `Supabase account ${a.uid}`
+          : a.uid ? "an organisation member (Supabase records the app grant here, not the person)" : "an organisation member (Supabase recorded no name; the queries were quick)";
+        const sev: Sev = person && !m ? "high" : m && m.mfa === false ? "high" : "low";
+        add({ fingerprint: fp("sb", ref, "conn.mgmt", key, new Date().toISOString().slice(0, 10)), source: "supabase", target_id: T, check_code: "connection.mgmt_api",
+          category: "activity", severity: sev,
+          title: `SQL run as postgres through ${how} by ${m ? who : person ? "an account that is not in the organisation" : "an organisation member"}`,
+          detail: `${who}${m ? ` (${m.role}${m.mfa === false ? ", no MFA" : ""})` : ""} ran SQL on this project through ${how}` +
+            `${a.n ? ` (${a.n} logged statement${a.n === 1 ? "" : "s"} in the last 3 hours)` : ""}. This needs a Supabase login or token, not the database password.`,
+          remediation: person && !m ? "This account is not a member of the organisation. Check Organisation › Audit logs now; revoke its tokens and change the database password if you do not recognise it."
+            : m && m.mfa === false ? "Ask them to turn on MFA (Account › Security) - their login alone is enough to run any SQL."
+            : "Nothing to do if this work is expected. Check Organisation › Audit logs if it is not.",
+          meta: { kind: a.kind, user_id: person ? a.uid : null, grant_id: person ? null : a.uid || null, source: a.src || null, email: m?.email ?? null, addrs: viaApi.map((c) => c.addr), n: a.n } });
+      }
+    }
     for (const c of conns) {
+      if (c.app === "mgmt-api") continue;
       if (!c.addr || isPrivateIp(c.addr) || ipInList(c.addr, known)) continue;
       if (/^(postgrest|realtime|supavisor|Supabase|pg_net|pgbouncer|storage|gotrue|auth)/i.test(c.app) || /^supabase_|^authenticator$/.test(c.role)) continue;
       // the project's own edge functions: Supabase runs them in AWS (2a05:d000::/25) and they connect with postgres.js / Deno
@@ -293,7 +349,7 @@ async function orgs(list: { org: string }[]) {
   for (const org of [...new Set(list.map((p) => p.org).filter(Boolean))]) {
     const T = `supabase-org:${org}`;
     try {
-      const members: any[] = await mgmt(`/organizations/${org}/members`) ?? [];
+      const members: any[] = ORG_MEMBERS.get(org) ?? await mgmt(`/organizations/${org}/members`) ?? [];
       await upsertTargets([{ id: T, kind: "supabase", ref: org, name: `Supabase organisation ${org}`, meta: { org: true, members: members.map((m) => ({ name: m.user_name, email: m.email, role: m.role_name, mfa: m.mfa_enabled })) } }]);
       const F: Finding[] = members.filter((m) => m.mfa_enabled === false).map((m) => ({
         fingerprint: fp("sborg", org, "member.nomfa", m.user_id ?? m.email), source: "supabase", target_id: T, check_code: "org.member_no_mfa", category: "access",
@@ -311,6 +367,7 @@ export async function runPosture() {
   if (!PAT) { await setConnector("supabase", { ok: false, note: "WD_SUPABASE_PAT secret not set" }); return { skipped: "WD_SUPABASE_PAT not set" }; }
   const s = await settings();
   const list = await projects();
+  await loadMembers(list);
   const res = await pool(list, 3, (p) => postureOne(p, s));
   const org = await orgs(list);
   await q(db.rpc("wd_posture_snapshot"));
@@ -502,5 +559,9 @@ export async function runLogs() {
   const s = await settings();
   const list = await projects();
   const res = await pool(list, 3, (p) => logsOne(p, s));
-  return { projects: list.length, results: res.map((r: any) => r.value ?? { error: r.reason?.message?.slice(0, 300) }) };
+  const failed = res.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  await setConnector("supabase_logs", { ok: !failed.length, projects: list.length, failed: failed.length });
+  // every project failing means the logs feed itself is broken: fail the run so Guard raises "logs job failed"
+  if (list.length && failed.length === list.length) throw new Error(`logs failed for all ${list.length} projects: ${String(failed[0].reason?.message ?? failed[0].reason).slice(0, 300)}`);
+  return { projects: list.length, failed: failed.length, results: res.map((r: any) => r.value ?? { error: r.reason?.message?.slice(0, 300) }) };
 }

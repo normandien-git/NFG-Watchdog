@@ -2,7 +2,7 @@
 // Posture (hourly): advisors, auth settings, network/SSL/backups, API keys, edge functions, secrets, database checks,
 // connections, slow queries, org members. Logs (every 15 minutes): traffic, sign-ins, failures, database errors.
 import { db, q, sha, fp, iso, nowIso, pool, getJson, settings, setConnector, upsertTargets, patchTargetMeta, syncFindings,
-  syncInventory, insertMany, ipInList, isPrivateIp, type Finding, type Sev } from "./lib.ts";
+  syncInventory, insertMany, ipInList, isPrivateIp, parseCallers, knownCaller, type Finding, type Sev } from "./lib.ts";
 
 const API = "https://api.supabase.com/v1";
 const PAT = Deno.env.get("WD_SUPABASE_PAT") ?? "";   // Supabase reserves the SUPABASE_ prefix for its own secrets
@@ -446,6 +446,7 @@ async function logsOne(p: { ref: string; name: string }, s: Record<string, any>)
   if (end <= start) return { ref, skipped: true };
   const S = iso(start), E = iso(end);
   const known: string[] = s.known_ips || [], allowed = new Set<string>(s.allowed_countries || ["ZA"]);
+  const callers = parseCallers(s.known_callers);
   const F: Finding[] = [];
   const day = S.slice(0, 10);
 
@@ -467,22 +468,34 @@ async function logsOne(p: { ref: string; name: string }, s: Record<string, any>)
   await insertMany("wd_traffic", [...rows, ...frows]);
 
   // ---- heuristics on traffic
+  const sk = new Map<string, { r: any; n: number; ips: Set<string>; nets: Set<string>; places: Set<string> }>();
   const byIp = new Map<string, { n: number; denied: number; bytes: number; country: string; asn: string; agents: Set<string> }>();
   for (const r of rows) {
     if (!r.ip) continue;
     const x = byIp.get(r.ip) ?? { n: 0, denied: 0, bytes: 0, country: r.country ?? "", asn: r.asn_org ?? "", agents: new Set() };
     x.n += r.requests; x.bytes += r.bytes_out; if (r.status === 401 || r.status === 403) x.denied += r.requests; x.agents.add(r.agent);
     byIp.set(r.ip, x);
-    // secret keys
+    // secret keys: one finding per caller (key, agent, path) a day, not per address. Cloud servers (Netlify functions,
+    // AWS jobs) get a new address on almost every run, so the address alone says little.
     if ((r.key_type === "secret" || r.key_type === "service_role_jwt") && r.agent !== "supabase" && !ipInList(r.ip, known)) {
       const browser = r.agent === "browser";
-      F.push({ fingerprint: fp("sb", ref, "act.secret_key", r.key_id ?? r.key_type, r.ip, day), source: "supabase", target_id: T, check_code: browser ? "activity.secret_key_browser" : "activity.secret_key_unknown_ip",
-        category: "activity", severity: browser ? "critical" : "high",
-        title: browser ? `Secret key used from a web browser (${r.ip})` : `Secret key used from an unfamiliar address ${r.ip}`,
-        detail: `${r.key_id || r.key_type} called ${r.method} ${r.path} from ${r.city ?? ""} ${r.country ?? ""} (${r.asn_org ?? "unknown network"}), agent ${r.agent}. ${browser ? "A secret key in a browser means it is in front-end code or someone copied it." : "Not a Supabase function and not on the known addresses list."}`,
-        remediation: browser ? "Rotate the secret key now (Project Settings › API Keys), then find where it leaked (Netlify scan, repo)." : "If this is a known server, add it to Settings › Known addresses. If not, rotate the key.",
-        meta: { ip: r.ip, key: r.key_id, agent: r.agent, path: r.path, country: r.country, asn: r.asn_org } });
+      if (!browser && knownCaller(callers, ref, p.name, r)) continue;
+      const key = r.key_id ?? r.key_type, f = fp("sb", ref, "act.secret_key", key, r.agent, r.method, r.path, day);
+      const c = sk.get(f) ?? { r, n: 0, ips: new Set<string>(), nets: new Set<string>(), places: new Set<string>() };
+      c.n += r.requests; c.ips.add(r.ip); if (r.asn_org) c.nets.add(r.asn_org);
+      if (r.country) c.places.add(`${r.city ?? ""} ${r.country}`.trim());
+      sk.set(f, c);
     }
+  }
+  for (const [f, c] of sk) {
+    const r = c.r, browser = r.agent === "browser", key = r.key_id || r.key_type, ips = [...c.ips];
+    const where = `${ips.length === 1 ? ips[0] : `${ips.length} addresses (${ips.slice(0, 5).join(", ")}${ips.length > 5 ? ", ..." : ""})`}`;
+    F.push({ fingerprint: f, source: "supabase", target_id: T, check_code: browser ? "activity.secret_key_browser" : "activity.secret_key_unknown_ip",
+      category: "activity", severity: browser ? "critical" : "high",
+      title: browser ? `Secret key used from a web browser: ${r.method} ${r.path}` : `Secret key used by an unrecognised caller: ${r.method} ${r.path}`,
+      detail: `${key} called ${r.method} ${r.path} ${c.n} time${c.n === 1 ? "" : "s"} from ${where}, ${[...c.places].join(", ") || "unknown place"} (${[...c.nets].join(", ") || "unknown network"}), agent ${r.agent}. ${browser ? "A secret key in a browser means it is in front-end code or someone copied it." : "Not a Supabase function, not on Known addresses and not on Known callers."}`,
+      remediation: browser ? "Rotate the secret key now (Project Settings › API Keys), then find where it leaked (Netlify scan, repo)." : "If this is one of our servers or scheduled functions, add it to Settings › Known callers (or Known addresses if its address never changes). If not, rotate the key.",
+      meta: { ips, key: r.key_id, agent: r.agent, method: r.method, path: r.path, requests: c.n, asn: [...c.nets].join(", "), country: r.country } });
   }
   const deniedT = Number(s.denied_request_threshold ?? 200), dlT = Number(s.download_mb_threshold ?? 100) * 1048576;
   for (const [ip, x] of byIp) {

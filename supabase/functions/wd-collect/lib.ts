@@ -88,6 +88,29 @@ export function ipInList(ip: string | null | undefined, list: string[] = []): bo
   }
   return false;
 }
+// ---------- known callers ----------
+// Setting known_callers: one line per caller, "label | project | key | agent | path | network".
+// project = ref or name; key = key prefix shown in Traffic (e.g. sb_secret_KSTg3); agent = script/other/none;
+// path = start of the path (e.g. /rest/v1/report_); network = part of the network name (e.g. amazon).
+// Blank or * means any. Used for servers whose address keeps changing (Netlify functions, cloud jobs).
+export type Caller = { label: string; project: string; key: string; agent: string; path: string; network: string };
+export function parseCallers(v: unknown): Caller[] {
+  const any = (x?: string) => { const t = (x ?? "").trim(); return t === "*" ? "" : t; };
+  return (Array.isArray(v) ? v : []).map((l) => String(l).split("|")).filter((a) => a.length >= 2).map((a) => ({
+    label: a[0].trim(), project: any(a[1]).toLowerCase(), key: any(a[2]), agent: any(a[3]).toLowerCase(), path: any(a[4]), network: any(a[5]).toLowerCase() }));
+}
+export function knownCaller(list: Caller[], ref: string, name: string,
+  r: { key_id?: string | null; agent?: string | null; path?: string | null; asn_org?: string | null }): Caller | null {
+  for (const c of list) {
+    if (c.project && c.project !== ref.toLowerCase() && c.project !== name.toLowerCase()) continue;
+    if (c.key && !(r.key_id ?? "").startsWith(c.key)) continue;
+    if (c.agent && c.agent !== (r.agent ?? "").toLowerCase()) continue;
+    if (c.path && !(r.path ?? "").startsWith(c.path)) continue;
+    if (c.network && !(r.asn_org ?? "").toLowerCase().includes(c.network)) continue;
+    return c;
+  }
+  return null;
+}
 export const isPrivateIp = (ip?: string | null) =>
   !ip || /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80)/i.test(ip);
 

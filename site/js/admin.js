@@ -131,16 +131,17 @@ function summary(s) {
 }
 
 // ---------------------------------------------------------------- Settings
-const SET_TYPE = { allowed_countries: "list", known_ips: "list", alert_emails: "list", excluded_projects: "list", alert_mailbox: "text",
+const SET_TYPE = { allowed_countries: "list", known_ips: "list", known_callers: "lines", alert_emails: "list", excluded_projects: "list", alert_mailbox: "text",
   failed_login_threshold: "number", denied_request_threshold: "number", download_mb_threshold: "number", slow_query_ms: "number" };
-const SET_NAME = { allowed_countries: "Countries we work from", known_ips: "Known addresses", alert_emails: "Alert emails", alert_mailbox: "Alert mailbox",
+const SET_NAME = { allowed_countries: "Countries we work from", known_ips: "Known addresses", known_callers: "Known callers", alert_emails: "Alert emails", alert_mailbox: "Alert mailbox",
   failed_login_threshold: "Failed sign-ins before flagging", denied_request_threshold: "Refused requests before flagging", download_mb_threshold: "Large download (MB)",
   slow_query_ms: "Slow query (ms)", excluded_projects: "Projects to leave alone" };
 H.screen("settings", async (main, ctx) => {
   H.loading(main);
   const rows = (await H.q(H.db.from("wd_setting").select("*").order("key"))).filter((r) => SET_TYPE[r.key]);
   if (ctx.stale()) return;
-  const show = (r) => SET_TYPE[r.key] === "list" ? (r.value || []).join(", ") || "none" : String(r.value ?? "") || "not set";
+  const show = (r) => SET_TYPE[r.key] === "lines" ? (r.value || []).map((l) => String(l).split("|")[0].trim()).join(", ") || "none"
+    : SET_TYPE[r.key] === "list" ? (r.value || []).join(", ") || "none" : String(r.value ?? "") || "not set";
   main.innerHTML = H.title("Settings", "What Guard treats as normal. Changes apply from the next collector run and are kept in the change log.") +
     H.table([
       { h: "Setting", w: "1.4fr", f: (r) => `<b>${esc(SET_NAME[r.key] || r.key)}</b><br><span class="sub-t">${esc(r.note || "")}</span>` },
@@ -150,12 +151,19 @@ H.screen("settings", async (main, ctx) => {
   H.rowClick(main, async (r) => {
     const type = SET_TYPE[r.key];
     const ok = await H.sheet({ title: SET_NAME[r.key] || r.key, ok: "Save",
-      html: `<p class="sub-t">${esc(r.note || "")}</p>` + (type === "list"
+      html: `<p class="sub-t">${esc(r.note || "")}</p>` + (type === "lines"
+        ? `<label class="fld">One caller per line: label | project | key | agent | path | network. Leave a field blank or * for any.<textarea name="v" rows="6" class="mono">${esc((r.value || []).join("\n"))}</textarea></label>`
+        : type === "list"
         ? `<label class="fld">One per line (or comma separated)<textarea name="v" rows="6">${esc((r.value || []).join("\n"))}</textarea></label>`
         : `<label class="fld">Value<input name="v" ${type === "number" ? 'type="number" min="1"' : ""} value="${esc(r.value ?? "")}"></label>`),
       collect: async (f) => {
         let v = f.v.value.trim();
-        if (type === "list") {
+        if (type === "lines") {
+          v = v.split(/\n+/).map((x) => x.trim()).filter(Boolean).map((x) => x.split("|").map((y) => y.trim()).join(" | "));
+          const bad = v.find((x) => { const a = x.split("|").map((y) => y.trim()); const set = (i) => a[i] && a[i] !== "*";
+            return a.length !== 6 || !set(0) || !set(1) || !(set(2) || set(4)); });
+          if (bad) return `Each line needs six fields (label | project | key | agent | path | network), a label, a project, and a key or a path. Check: ${bad}`;
+        } else if (type === "list") {
           v = v.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
           if (r.key === "allowed_countries") { v = v.map((x) => x.toUpperCase()); if (v.some((x) => !/^[A-Z]{2}$/.test(x))) return "Use two-letter country codes, e.g. ZA, NA, BW."; }
           if (r.key === "known_ips" && v.some((x) => !/^[0-9a-f:.]+(\/\d{1,3})?$/i.test(x))) return "Each line must be an address or range, e.g. 41.0.0.10 or 196.21.0.0/24.";

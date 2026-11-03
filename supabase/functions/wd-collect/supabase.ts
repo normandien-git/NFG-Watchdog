@@ -236,7 +236,7 @@ async function postureOne(p: { ref: string; name: string }, s: Record<string, an
         to_regclass('extensions.pg_stat_statements') is not null as has_pss,
         (select coalesce(json_agg(p.oid::regprocedure::text order by 1), '[]') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
           where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'EXECUTE')
-            and exists (select 1 from unnest(coalesce(p.proargnames, '{}')) a where a ~* '^(p_)?(secret|shared_secret|api_?key|link_?key|password|passwd|key)$')) as shared_key_fns,
+            and exists (select 1 from unnest(coalesce(p.proargnames, '{}')) a where a ~* '^(p_)?(secret|shared_secret|api_?key|link_?key|password|passwd)$')) as shared_key_fns,
         (select json_build_object('n', count(*), 'names', coalesce((array_agg(p.proname::text order by p.proname))[1:15], '{}')) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
           where n.nspname = 'public' and p.prosecdef and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
             and exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')

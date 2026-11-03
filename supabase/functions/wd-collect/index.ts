@@ -1,7 +1,7 @@
 // NFG Guard collector (edge function wd-collect on NFG-Watchdog).
 // Called by pg_cron (header x-wd-cron, checked against the vault secret) or by a Guard admin's "Run now"
 // (their own session, which must be at aal2 and on the wd_user list as admin). Answers at once; the job runs in the background.
-// Jobs: logs (15 min), supabase (hourly posture), netlify (hourly), entra (hourly), prune (nightly, 90 days), all.
+// Jobs: logs (15 min), supabase (hourly posture), netlify (hourly), entra (hourly), mail (daily mailboxes), prune (nightly, 90 days), all.
 //
 // Secrets (Edge Functions › Secrets on NFG-Watchdog):
 //   WD_SUPABASE_PAT      access token of a read-only member of the NFG Supabase organisation
@@ -18,6 +18,7 @@ import { runNetlify, netlifyReady } from "./netlify.ts";
 import { runEntra, entraReady } from "./entra.ts";
 import { deliverAlerts } from "./alerts.ts";
 import { mailReady } from "./mail.ts";
+import { runMail } from "./exchange.ts";
 
 const ORIGINS = [/^https:\/\/(guard|watchdog)\.normandien\.co\.za$/, /^https:\/\/[a-z0-9-]+\.netlify\.app$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 const cors = (req: Request) => {
@@ -41,7 +42,7 @@ async function prune() {
   }
   const f = await db.from("wd_finding").delete({ count: "exact" }).eq("status", "resolved").lt("resolved_at", cut);
   out.wd_finding = f.count ?? 0;
-  for (const t of ["wd_edge_function", "wd_secret", "wd_outbound"]) {
+  for (const t of ["wd_edge_function", "wd_secret", "wd_outbound", "wd_mailbox"]) {
     const r = await db.from(t).delete({ count: "exact" }).eq("active", false).lt("last_seen", cut);
     out[t] = r.count ?? 0;
   }
@@ -71,7 +72,7 @@ async function selfCheck() {
 }
 
 const JOBS: Record<string, () => Promise<unknown>> = {
-  logs: runLogs, supabase: runPosture, netlify: runNetlify, entra: runEntra, prune,
+  logs: runLogs, supabase: runPosture, netlify: runNetlify, entra: runEntra, mail: runMail, prune,
   all: async () => ({ supabase: await runPosture(), netlify: await runNetlify(), entra: await runEntra(), logs: await runLogs() }),
 };
 

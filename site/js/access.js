@@ -180,3 +180,72 @@ H.screen("people", async (main, ctx) => {
       { h: "MFA", w: "90px", f: (r) => r.mfa === true ? H.tag("on", "ok") : r.mfa === false ? H.tag("off", "err") : `<span class="sub-t">unknown</span>`, sv: (r) => String(r.mfa) },
     ], rows, { search: true, min: 820, empty: "Nothing yet: this fills in once the Supabase, Netlify and Entra connections work." });
 });
+
+// ---------------------------------------------------------------- Mailboxes (Exchange Online, daily)
+const MBX_KIND = { UserMailbox: "Person", SharedMailbox: "Shared", RoomMailbox: "Room", EquipmentMailbox: "Equipment" };
+const mbxAccess = (r) => {
+  const by = new Map();
+  const add = (who, what) => { const l = by.get(who) ?? []; l.push(what); by.set(who, l); };
+  for (const a of r.full_access || []) add(a.who, a.rights.includes("FullAccess") ? "Full access" : a.rights.join(", "));
+  for (const w of r.send_as || []) add(w, "Send as");
+  for (const w of r.send_on_behalf || []) add(w, "Send on behalf");
+  for (const a of r.inbox_access || []) add(a.who, `Inbox: ${a.rights.join(", ")}`);
+  return [...by];
+};
+const mbxForwards = (r) => [
+  ...(r.forward_smtp ? [{ to: r.forward_smtp, how: "Mailbox forwarding", on: true, keep: r.deliver_and_forward }] : []),
+  ...(r.forward_to ? [{ to: r.forward_to, how: "Mailbox forwarding", on: true, keep: r.deliver_and_forward }] : []),
+  ...(r.forward_rules || []).flatMap((x) => x.to.map((to) => ({ to, how: `Rule "${x.name}" (${x.how})`, on: x.enabled }))),
+];
+H.screen("mailboxes", async (main, ctx) => {
+  H.loading(main);
+  const [all, set] = await Promise.all([
+    H.all(() => H.db.from("wd_mailbox").select("*").eq("active", true).order("display_name")),
+    H.q(H.db.from("wd_setting").select("key, value").in("key", ["mailbox_idle_days", "connectors"])),
+  ]);
+  if (ctx.stale()) return;
+  const S = Object.fromEntries(set.map((r) => [r.key, r.value]));
+  const days = Number(S.mailbox_idle_days ?? 90), ex = S.connectors?.exchange, cut = Date.now() - days * 86400e3;
+  const isFwd = (r) => mbxForwards(r).length > 0;
+  const isIdle = (r) => !!r.checked_at && (!r.last_action || Date.parse(r.last_action) < cut) && !(r.created_src && Date.parse(r.created_src) > cut);
+  const isShared = (r) => mbxAccess(r).length > 0;
+  const VIEWS = [["fwd", "Forwarding on", isFwd], ["idle", `Not used in ${days} days`, isIdle], ["others", "Someone else has access", isShared], ["all", "All mailboxes", () => true]];
+  const st = { v: "fwd" };
+  const ext = (r, a) => (r.forward_external || []).includes(a);
+  const draw = () => {
+    const test = VIEWS.find((v) => v[0] === st.v)[2];
+    const rows = all.filter(test);
+    const unchecked = all.filter((r) => !r.checked_at).length;
+    main.innerHTML = H.title("Mailboxes", "Every Exchange mailbox: where its mail is forwarded, who else can open, read or send as it, and when it was last used. Checked once a day; Guard reads settings and permissions only, never mail.") +
+      (!ex?.ok ? `<div class="banner">The Exchange connection is not working yet${ex?.note ? `: ${esc(ex.note)}` : ""}. <button class="link" data-go="runs">See Collector runs</button></div>` : "") +
+      (ex?.ok && ex.auto_forwarding && ex.auto_forwarding !== "On" ? `<p class="sub-t">Microsoft is set to block automatic forwarding to outside addresses (outbound spam policy: ${esc(ex.auto_forwarding)}), so external forwards below are set up but should not deliver.</p>` : "") +
+      (ex?.ok && ex.auto_forwarding === "On" ? `<div class="banner err">The outbound spam policy allows automatic forwarding to outside addresses: external forwards below are delivering mail out of NFG.</div>` : "") +
+      (unchecked ? `<p class="sub-t">${H.u0(unchecked)} mailbox${unchecked === 1 ? " is" : "es are"} still waiting for the detailed check (last used, full access, inbox rules); the daily run works through them.</p>` : "") +
+      `<div class="chips">${VIEWS.map(([k, l, t]) => `<button class="chip${st.v === k ? " on" : ""}" data-v="${k}">${esc(l)} (${all.filter(t).length})</button>`).join("")}</div>` +
+      H.table([
+        { h: "Mailbox", w: "1.7fr", f: (r) => `<b>${esc(r.display_name)}</b> ${H.tag(MBX_KIND[r.kind] || r.kind, "mute")}${r.hidden ? " " + H.tag("hidden", "mute") : ""}<br><span class="sub-t">${esc(r.smtp || r.upn)}</span>`, sv: (r) => r.display_name },
+        { h: "Forwarding", w: "2fr", f: (r) => mbxForwards(r).map((x) => `${ext(r, x.to) ? H.tag("outside NFG", "err") : ""} <span class="mono">${esc(x.to)}</span>${x.on ? "" : " " + H.tag("rule off", "mute")}<br><span class="sub-t">${esc(x.how)}${x.keep === false ? ", no copy kept" : ""}</span>`).join("<br>") || `<span class="sub-t">none</span>`,
+          sv: (r) => (r.forward_external || []).length * 10 + mbxForwards(r).length },
+        { h: "Someone else has access", w: "2fr", f: (r) => mbxAccess(r).map(([who, what]) => `${esc(who)}<br><span class="sub-t">${what.map(esc).join(" · ")}</span>`).join("<br>") || `<span class="sub-t">nobody</span>`, sv: (r) => mbxAccess(r).length },
+        { h: "Last used", w: "130px", f: (r) => !r.checked_at ? `<span class="sub-t">not checked yet</span>` : `${esc(r.last_action ? H.ago(r.last_action) : "never")}${isIdle(r) ? "<br>" + H.tag("not in use", "warn") : ""}`, sv: (r) => r.last_action || "" },
+        { h: "Size", w: "100px", cls: "n", f: (r) => r.size_bytes != null ? `${H.bytes(r.size_bytes)}<br><span class="sub-t">${H.u0(r.items)} items</span>` : "", sv: (r) => Number(r.size_bytes || 0) },
+      ], rows, { search: true, min: 1100, rowAttrs: () => "", empty: all.length ? "No mailboxes in this list." : "Nothing yet: this fills in after the first mail run (Admin › Collector runs › Run mail)." });
+    main.querySelectorAll("[data-v]").forEach((b) => { b.onclick = () => { st.v = b.dataset.v; draw(); }; });
+    main.querySelector("[data-go]")?.addEventListener("click", () => H.go("runs"));
+    H.rowClick(main, (r) => H.sheet({ title: r.display_name, wide: true, ok: null,
+      html: `<dl class="kv"><dt>Address</dt><dd class="mono">${esc(r.smtp)}</dd><dt>Sign-in name</dt><dd class="mono">${esc(r.upn || "")}</dd>` +
+        `<dt>Kind</dt><dd>${esc(MBX_KIND[r.kind] || r.kind)}${r.hidden ? ", hidden from the address book" : ""}</dd><dt>Created</dt><dd>${esc(H.shortDate(r.created_src))}</dd>` +
+        `<dt>Last used</dt><dd>${esc(r.last_action ? H.dateTime(r.last_action) : r.checked_at ? "never" : "not checked yet")}</dd><dt>Last opened</dt><dd>${esc(r.last_logon ? H.dateTime(r.last_logon) : "")}</dd>` +
+        `<dt>Size</dt><dd>${r.size_bytes != null ? `${H.bytes(r.size_bytes)}, ${H.u0(r.items)} items` : ""}</dd><dt>Checked</dt><dd>${esc(r.checked_at ? H.ago(r.checked_at) : "not yet")}</dd></dl>` +
+        `<h3>Forwarding</h3>` + H.table([
+          { h: "To", w: "1.6fr", f: (x) => `<span class="mono">${esc(x.to)}</span>${ext(r, x.to) ? " " + H.tag("outside NFG", "err") : ""}` },
+          { h: "How", w: "1.6fr", f: (x) => esc(x.how) + (x.keep === false ? ", no copy kept in the mailbox" : x.keep ? ", copy kept" : "") },
+          { h: "On", w: "70px", f: (x) => x.on ? H.tag("on", "warn") : H.tag("off", "mute") },
+        ], mbxForwards(r), { min: 560, empty: "No forwarding." }) +
+        `<h3>Who else has access</h3>` + H.table([
+          { h: "Who", w: "1.6fr", f: ([who]) => esc(who) },
+          { h: "Can", w: "2fr", f: ([, what]) => what.map((w) => H.tag(w, /Full|Everyone/.test(w) ? "err" : "mute")).join(" ") },
+        ], mbxAccess(r), { min: 560, empty: "Nobody else." }) }));
+  };
+  draw();
+});

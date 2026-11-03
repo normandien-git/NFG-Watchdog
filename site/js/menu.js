@@ -17,6 +17,7 @@ H.MENU = [
       { n: "Sign-ins", s: "signins" },
       { n: "Database logins", s: "dbconn" },
       { n: "People with admin access", s: "people" },
+      { n: "Mailboxes", s: "mailboxes" },
     ]},
   ]},
   { k: "int", n: "Integrations", secs: [
@@ -95,7 +96,7 @@ H.screen("home", async (main, ctx) => {
   const t = sum.totals || {};
   const c = conn.value || {};
   const lastRun = (job) => runs.find((r) => r.job === job);
-  const conns = [["supabase", "Supabase"], ["netlify", "Netlify"], ["entra", "Entra / 365"], ["alerts", "Alerts"]];
+  const conns = [["supabase", "Supabase"], ["netlify", "Netlify"], ["entra", "Entra / 365"], ["exchange", "Exchange mailboxes"], ["alerts", "Alerts"]];
 
   const scoreCls = score == null ? "" : score >= 85 ? "good" : score >= 60 ? "warn" : "bad";
   main.innerHTML = H.title("Security overview", "Everything Guard watches: Supabase projects, Netlify sites and the Entra / 365 apps they use. Checks run every hour; traffic and sign-ins every 15 minutes.",
@@ -143,7 +144,7 @@ H.screen("home", async (main, ctx) => {
         { h: "Where", w: "1.2fr", f: (r) => esc(H.tname(r.target_id)) },
       ], changes, { empty: "No changes recorded yet.", min: 520 }) +
     `</section>` +
-    `<p class="sub-t">Last runs: ${["logs", "supabase", "netlify", "entra"].map((j) => { const r = lastRun(j); return `${j} ${r ? `${H.ago(r.started_at)}${r.ok === false ? " (failed)" : ""}` : "never"}`; }).join(" · ")}</p>`;
+    `<p class="sub-t">Last runs: ${["logs", "supabase", "netlify", "entra", "mail"].map((j) => { const r = lastRun(j); return `${j} ${r ? `${H.ago(r.started_at)}${r.ok === false ? " (failed)" : ""}` : "never"}`; }).join(" · ")}</p>`;
 
   main.querySelectorAll("[data-go]").forEach((b) => { b.onclick = () => H.go(b.dataset.go, { ctx: b.dataset.sev ? { sev: b.dataset.sev } : undefined }); });
   main.querySelectorAll("[data-target]").forEach((b) => { b.onclick = () => H.go("targets", { ctx: { open: b.dataset.target } }); });

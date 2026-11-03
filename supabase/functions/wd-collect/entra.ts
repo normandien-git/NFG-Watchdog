@@ -38,7 +38,7 @@ const HIGH: Record<string, Sev> = {
   "User.ReadWrite.All": "high", "Group.ReadWrite.All": "high", "Mail.ReadWrite": "high", "Mail.Send": "high", "Mail.Read": "high",
   "Files.ReadWrite.All": "high", "Sites.FullControl.All": "high", "Sites.ReadWrite.All": "high", "Policy.ReadWrite.ConditionalAccess": "critical",
   "UserAuthenticationMethod.ReadWrite.All": "critical", "Calendars.ReadWrite": "medium", "Files.Read.All": "medium", "Sites.Read.All": "medium",
-  "Directory.Read.All": "medium", "User.Read.All": "low", "AuditLog.Read.All": "low",
+  "Directory.Read.All": "medium", "User.Read.All": "low", "AuditLog.Read.All": "low", "Exchange.ManageAsApp": "medium",
 };
 
 const resCache = new Map<string, any>();

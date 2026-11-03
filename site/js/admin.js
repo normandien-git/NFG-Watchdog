@@ -100,7 +100,7 @@ H.screen("runs", async (main, ctx) => {
   };
   const sec = (n) => `<span class="mono">${n}</span>`;
   main.innerHTML = H.title("Collector runs", "The collector runs on a schedule: traffic and sign-ins every 15 minutes, settings checks hourly, clean-up nightly. Its keys live only in the NFG-Watchdog edge function secrets.",
-      ["logs", "supabase", "netlify", "entra"].map((j) => H.btn(`Run ${j}`, "admin", { attrs: `data-run="${j}"` })).join("")) +
+      ["logs", "supabase", "netlify", "entra", "mail"].map((j) => H.btn(`Run ${j}`, "admin", { attrs: `data-run="${j}"` })).join("")) +
     `<div class="grid3">` +
       card("supabase", "Supabase", `<ol><li>Invite a new member to the NFG Supabase organisation with the <b>Read-only</b> role (e.g. watchdog@normandien.co.za) and turn on MFA for that account.</li><li>Signed in as that member: Account › Access Tokens › Generate new token, name it "NFG Guard".</li><li>NFG-Watchdog › Edge Functions › Secrets: add ${sec("WD_SUPABASE_PAT")} with the token.</li></ol><p>Read-only keeps the token from changing anything if it ever leaks.</p>`) +
       card("netlify", "Netlify", `<ol><li>Netlify › User settings › Applications › Personal access tokens › New access token "NFG Guard", with an expiry date you will diarise.</li><li>Add it as ${sec("NETLIFY_TOKEN")} on NFG-Watchdog.</li></ol>`) +
@@ -132,10 +132,10 @@ function summary(s) {
 
 // ---------------------------------------------------------------- Settings
 const SET_TYPE = { allowed_countries: "list", known_ips: "list", known_callers: "lines", alert_emails: "list", excluded_projects: "list", alert_mailbox: "text",
-  failed_login_threshold: "number", denied_request_threshold: "number", download_mb_threshold: "number", slow_query_ms: "number" };
+  failed_login_threshold: "number", denied_request_threshold: "number", download_mb_threshold: "number", slow_query_ms: "number", mailbox_idle_days: "number" };
 const SET_NAME = { allowed_countries: "Countries we work from", known_ips: "Known addresses", known_callers: "Known callers", alert_emails: "Alert emails", alert_mailbox: "Alert mailbox",
   failed_login_threshold: "Failed sign-ins before flagging", denied_request_threshold: "Refused requests before flagging", download_mb_threshold: "Large download (MB)",
-  slow_query_ms: "Slow query (ms)", excluded_projects: "Projects to leave alone" };
+  slow_query_ms: "Slow query (ms)", excluded_projects: "Projects to leave alone", mailbox_idle_days: "Mailbox not in use after (days)" };
 H.screen("settings", async (main, ctx) => {
   H.loading(main);
   const rows = (await H.q(H.db.from("wd_setting").select("*").order("key"))).filter((r) => SET_TYPE[r.key]);

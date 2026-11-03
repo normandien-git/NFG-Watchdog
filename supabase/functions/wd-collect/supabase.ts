@@ -233,7 +233,14 @@ async function postureOne(p: { ref: string; name: string }, s: Record<string, an
         (select setting::int from pg_settings where name = 'max_connections') as max_conn,
         pg_database_size(current_database()) as db_bytes,
         to_regclass('cron.job') is not null as has_cron,
-        to_regclass('extensions.pg_stat_statements') is not null as has_pss`);
+        to_regclass('extensions.pg_stat_statements') is not null as has_pss,
+        (select coalesce(json_agg(p.oid::regprocedure::text order by 1), '[]') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'EXECUTE')
+            and exists (select 1 from unnest(coalesce(p.proargnames, '{}')) a where a ~* '^(p_)?(secret|shared_secret|api_?key|link_?key|password|passwd|key)$')) as shared_key_fns,
+        (select json_build_object('n', count(*), 'names', coalesce((array_agg(p.proname::text order by p.proname))[1:15], '{}')) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.prosecdef and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+            and exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')
+            and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%' and c like '%pg_temp%')) as path_no_temp`);
     if (!r) return;
     stats.users = r.users; stats.mfa_users = r.mfa_users; stats.db_bytes = r.db_bytes;
     for (const w of r.open_write ?? []) add({ fingerprint: fp("sb", ref, "rls.open_write", w.s, w.t, w.p), source: "supabase", target_id: T, check_code: "rls.open_write", category: "data", severity: "high",
@@ -247,6 +254,17 @@ async function postureOne(p: { ref: string; name: string }, s: Record<string, an
       remediation: "Make the bucket private and hand out signed URLs, unless the files are meant to be public.", meta: b });
     for (const role of r.risky_roles ?? []) add({ fingerprint: fp("sb", ref, "role.super", role), source: "supabase", target_id: T, check_code: "role.superuser", category: "access", severity: "high",
       title: `Database login ${role} bypasses all security`, detail: "This login is a superuser or bypasses row-level security.", remediation: "Remove the attribute or the login if it is not needed." });
+    // a definer function anyone with the publishable key can call, guarded only by a shared key passed as a parameter
+    for (const f of r.shared_key_fns ?? []) add({ fingerprint: fp("sb", ref, "fn.shared_key", f), source: "supabase", target_id: T, check_code: "function.shared_key_public", category: "access", severity: "high",
+      title: `Anyone with the public key can call ${f}; only a shared key in the call protects it`,
+      detail: "The function runs with the owner's rights and the anon role may execute it, so the only lock is a key the caller passes as a parameter. That key travels in every call, sits in the caller's code or config, and is the same for every caller. If it leaks, anyone on the internet can run the function.",
+      remediation: "Move the caller to an edge function that checks the key in a header and calls the database with the service role, then revoke execute from anon and authenticated (as NFG Core did with fa-fleet-link).", meta: { function: f } });
+    // definer functions whose search_path does not end in pg_temp: Postgres then looks in the session's temporary schema first
+    const pt = r.path_no_temp || {};
+    if (Number(pt.n) > 0) add({ fingerprint: fp("sb", ref, "fn.path_no_pg_temp"), source: "supabase", target_id: T, check_code: "function.search_path_no_pg_temp", category: "config", severity: "low",
+      title: `${pt.n} SECURITY DEFINER function${pt.n === 1 ? "" : "s"} without pg_temp at the end of the search_path`,
+      detail: `With search_path = public and no pg_temp, Postgres searches the caller's temporary schema before public for tables, so a caller who can create temp tables can shadow one. First few: ${(pt.names || []).join(", ")}.`,
+      remediation: "Set search_path = public, pg_temp on each (alter function ... set search_path = public, pg_temp). A one-off sweep migration fixes them all; make it the default in new migrations.", meta: pt });
     const u = r.users || {};
     if (u.anonymous > 0) stats.anonymous_users = u.anonymous;
     if (u.stale_90d > 0) add({ fingerprint: fp("sb", ref, "users.stale"), source: "supabase", target_id: T, check_code: "users.stale", category: "access", severity: "low",
@@ -497,6 +515,18 @@ async function logsOne(p: { ref: string; name: string }, s: Record<string, any>)
       remediation: browser ? "Rotate the secret key now (Project Settings › API Keys), then find where it leaked (Netlify scan, repo)." : "If this is one of our servers or scheduled functions, add it to Settings › Known callers (or Known addresses if its address never changes). If not, rotate the key.",
       meta: { ips, key: r.key_id, agent: r.agent, method: r.method, path: r.path, requests: c.n, asn: [...c.nets].join(", "), country: r.country } });
   }
+  // a server (not a browser) calling database functions with the publishable key: machine links should not run as anon
+  const pk = new Map<string, { r: any; n: number; ips: Set<string> }>();
+  for (const r of rows) {
+    if (!(r.key_type === "publishable" || r.key_type === "anon_jwt") || !String(r.path ?? "").startsWith("/rest/v1/rpc/")) continue;
+    if (!["other", "script", "none"].includes(r.agent) || ipInList(r.ip, known) || knownCaller(callers, ref, p.name, r)) continue;
+    const f = fp("sb", ref, "act.server_anon", r.path, r.agent);
+    const c = pk.get(f) ?? { r, n: 0, ips: new Set<string>() };
+    c.n += r.requests; if (r.ip) c.ips.add(r.ip); pk.set(f, c);
+  }
+  for (const [f, c] of pk) if (c.n >= 5) F.push({ fingerprint: f, source: "supabase", target_id: T, check_code: "activity.server_uses_public_key", category: "activity", severity: "medium",
+    title: `A server calls ${c.r.path} with the public key`, detail: `${c.n} calls since ${S.slice(11, 16)} UTC from ${[...c.ips].slice(0, 3).join(", ")} (agent ${c.r.agent}, not a browser) using the publishable key, so the function must be open to anon. Machine-to-machine links are usually what this is.`,
+    remediation: "Give the caller its own route: an edge function that checks a key in a header and calls with the service role, then close the function to anon. If it is a known link you accept, add it to Known callers.", meta: { path: c.r.path, agent: c.r.agent, requests: c.n, ips: [...c.ips].slice(0, 10) } });
   const deniedT = Number(s.denied_request_threshold ?? 200), dlT = Number(s.download_mb_threshold ?? 100) * 1048576;
   for (const [ip, x] of byIp) {
     if (ipInList(ip, known)) continue;

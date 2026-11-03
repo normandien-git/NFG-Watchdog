@@ -89,6 +89,7 @@ export async function runMail() {
   const prev: any[] = await q(db.from("wd_mailbox").select("*"));
   const old = new Map(prev.map((r) => [r.id, r]));
   const byKey = new Map<string, string>();
+  const runAt = nowIso();
   const base = boxes.filter((b) => !b.IsInactiveMailbox).map((b) => {
     const id = String(b.ExchangeGuid ?? b.Guid ?? b.ExternalDirectoryObjectId);
     for (const k of [b.Identity, b.Name, b.Alias, b.DisplayName, b.PrimarySmtpAddress, b.UserPrincipalName, b.Id]) if (k) byKey.set(String(k).toLowerCase(), id);
@@ -96,7 +97,7 @@ export async function runMail() {
       kind: String(b.RecipientTypeDetails ?? "UserMailbox"), hidden: !!b.HiddenFromAddressListsEnabled, created_src: when(b.WhenMailboxCreated ?? b.WhenCreated),
       forward_smtp: b.ForwardingSmtpAddress ? addrOf(String(b.ForwardingSmtpAddress)) : null, forward_to: b.ForwardingAddress ? String(b.ForwardingAddress) : null,
       deliver_and_forward: b.DeliverToMailboxAndForward ?? null, send_on_behalf: arr(b.GrantSendOnBehalfTo), send_as: [] as string[],
-      last_seen: nowIso(), active: true };
+      last_seen: runAt, active: true };
   });
   const rowById = new Map(base.map((r) => [r.id, r]));
   for (const p of sendAs) {
@@ -106,8 +107,8 @@ export async function runMail() {
     if (r && !r.send_as.includes(who)) r.send_as.push(who);
   }
   await insertMany("wd_mailbox", base, { onConflict: "id" });
-  const ids = base.map((r) => r.id);
-  if (ids.length) await q(db.from("wd_mailbox").update({ active: false }).eq("active", true).not("id", "in", `(${ids.map((x) => `"${x}"`).join(",")})`));
+  // gone since the last run = not touched by the upsert above (an "id not in (...)" list of hundreds of mailboxes is too long for a URL)
+  if (base.length) await q(db.from("wd_mailbox").update({ active: false }).eq("active", true).lt("last_seen", runAt));
 
   // ---- per mailbox (four calls each): oldest-checked first, within the time budget
   const order = [...base].sort((a, b) => String(old.get(a.id)?.checked_at ?? "").localeCompare(String(old.get(b.id)?.checked_at ?? "")));

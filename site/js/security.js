@@ -1,6 +1,7 @@
 // NFG Guard › Security: findings (posture, data exposure, secrets, config), suspicious activity, change log.
 // Performance findings use the same list with a preset filter.
 import { H } from "./watchdog.js";
+import { guide } from "./guide.js";
 const esc = H.esc;
 
 const CATS = { access: "Access", data: "Data exposure", config: "Settings", secrets: "Secrets", exposure: "Internet exposure", activity: "Activity", performance: "Performance", reliability: "Reliability" };
@@ -14,11 +15,16 @@ export async function openFinding(id, after) {
   const st = STATUS[f.status];
   const rem = String(f.remediation || "");
   const remHtml = /^https?:\/\//.test(rem) ? `<a href="${esc(rem)}" target="_blank" rel="noopener">${esc(rem)}</a>` : esc(rem);
+  // what to do: the finding's own advice first, then the general steps for this kind of finding (no repeats)
+  const g = guide(f);
+  const steps = [...(rem ? [`<li>${remHtml}</li>`] : []), ...g.fix.filter((x) => x && x !== rem).map((x) => `<li>${esc(x)}</li>`)];
   const meta = Object.keys(f.meta || {}).length ? `<details><summary class="sub-t">Technical detail</summary><pre class="wd-pre">${esc(JSON.stringify(f.meta, null, 2))}</pre></details>` : "";
   const v = await H.sheet({ title: f.title, wide: true, ok: null,
     html: `<div class="row">${H.sev(f.severity)} ${H.tag(st[0], st[1])} ${H.tag(CATS[f.category] || f.category)} ${H.kindTag(f.target_id)} <span class="sub-t">${esc(H.tname(f.target_id))}</span></div>` +
       (f.detail ? `<p style="white-space:pre-wrap">${esc(f.detail)}</p>` : "") +
-      (rem ? `<div class="note"><b>What to do</b><br>${remHtml}</div>` : "") +
+      (g.risk ? `<div class="note"><b>The risk, in plain words</b><br>${esc(g.risk)}</div>` : "") +
+      (steps.length ? `<div class="note"><b>How to fix it</b><ol class="steps">${steps.join("")}</ol>` +
+        (g.ok ? `<p class="sub-t"><b>Fine to accept when:</b> ${esc(g.ok)}</p>` : "") + `</div>` : "") +
       `<dl class="kv"><dt>First seen</dt><dd>${esc(H.dateTime(f.first_seen))}</dd><dt>Last seen</dt><dd>${esc(H.dateTime(f.last_seen))} (${H.u0(f.seen_count)} checks)</dd>` +
       (f.resolved_at ? `<dt>Resolved</dt><dd>${esc(H.dateTime(f.resolved_at))}</dd>` : "") +
       (f.status === "accepted" ? `<dt>Accepted by</dt><dd>${esc(f.accepted_by)}${f.accepted_until ? ` until ${esc(H.shortDate(f.accepted_until))}` : ""}</dd>` : "") +

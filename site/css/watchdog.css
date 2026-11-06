@@ -124,6 +124,7 @@ p{margin:0;max-width:85ch}
 .t-reg{background:#ececec;color:#000;font-family:"IBM Plex Mono",ui-monospace,monospace}
 .banner{border:1px solid #e3c68c;background:#fdf6e8;border-radius:8px;padding:10px 14px;font-size:13px;color:#573a00}
 .banner.err{border-color:#e6aaa5;background:var(--err-bg);color:var(--err)}
+.note ol.steps{margin:6px 0 2px 18px;padding:0}.note ol.steps li{margin:3px 0}.note p.sub-t{margin:8px 0 0}
 .note{border:1px dashed var(--grey-dk);border-radius:8px;padding:10px 14px;font-size:13px;color:#3c3e41;background:#fafafa}
 .yes{font-weight:900;text-align:center} .nope{color:var(--grey-dk);text-align:center}
 .lock{max-width:560px;margin:40px auto;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}

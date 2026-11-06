@@ -199,17 +199,14 @@ export async function runEntra() {
     for (const c of counts ?? []) await db.from("wd_entra_app").update({ sign_ins_30d: c.n }).eq("app_id", c.app_id);
   });
 
-  // ---- changes to apps and credentials
+  // ---- changes to apps and credentials: which app got what, from whom, and how much that permission can do
   await step("directory audit", async () => {
     const ev = await graphAll(`/v1.0/auditLogs/directoryAudits?$filter=activityDateTime ge ${since.toISOString()} and category eq 'ApplicationManagement'&$top=500`, 2000);
     await insertMany("wd_audit_external", ev.map((e) => ({ id: `entra:${e.id}`, source: "entra", at: e.activityDateTime,
       actor: e.initiatedBy?.user?.userPrincipalName ?? e.initiatedBy?.app?.displayName ?? null, action: e.activityDisplayName,
       target: (e.targetResources ?? []).map((t: any) => t.displayName).filter(Boolean).join(", "), ip: e.initiatedBy?.user?.ipAddress ?? null, meta: { result: e.result, category: e.category } })), { onConflict: "id", ignoreDuplicates: true });
     for (const e of ev.filter((e) => /credential|certificate|secret|consent|app role assignment|delegated permission/i.test(e.activityDisplayName)))
-      A.push({ source: "entra", target_id: tgt, fingerprint: fp("en", "audit", e.id), check_code: "activity.entra_app_change", category: "activity",
-        severity: /consent|app role assignment/i.test(e.activityDisplayName) ? "high" : "medium",
-        title: `Entra: ${e.activityDisplayName} on ${(e.targetResources ?? []).map((t: any) => t.displayName).filter(Boolean).join(", ") || "an app"}`,
-        detail: `By ${e.initiatedBy?.user?.userPrincipalName ?? e.initiatedBy?.app?.displayName ?? "unknown"} at ${e.activityDateTime}.`, remediation: "Confirm the change was planned.", meta: { id: e.id } });
+      A.push(appChange(e, tgt, appRows));
   });
 
   await patchTargetMeta(tgt, { signins_until: now.toISOString(), at: nowIso(), apps: appRows.length, signins, errors, credentials: credStats });
@@ -217,4 +214,82 @@ export async function runEntra() {
   const b = await syncFindings("entra:activity", A, false);
   await setConnector("entra", { ok: !errors.length, apps: appRows.length, errors: errors.length ? errors : undefined });
   return { apps: appRows.length, signins, findings: F.length, activity: A.length, sync: a, activity_sync: b, errors };
+}
+
+// ---------- Entra app changes in plain words
+const RANK: Record<Sev, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
+const maxSev = (l: Sev[], d: Sev): Sev => l.length ? l.reduce((a, b) => (RANK[b] > RANK[a] ? b : a)) : d;
+// how much one permission can do (application permission, no user signed in)
+export const permSev = (p: string): Sev => HIGH[p] ?? (/ReadWrite|\.Send|FullControl|full_access|RoleManagement|AppRoleAssignment|\.Write/i.test(p) ? "high"
+  : /ManageAsApp/i.test(p) ? "medium" : /Read/i.test(p) ? "low" : "medium");
+const WORDS: [RegExp, string][] = [
+  [/^Mail\.Send/i, "send email as any person in NFG"],
+  [/^Mail\.ReadWrite/i, "read, change and delete everyone's email"],
+  [/^Mail\.Read/i, "read everyone's email"],
+  [/full_access_as_app/i, "open every mailbox"],
+  [/RoleManagement|AppRoleAssignment|Application\.ReadWrite/i, "give itself or other apps more rights (admin level)"],
+  [/^(Directory|User|Group|Domain)\.ReadWrite/i, "change users, groups or directory settings"],
+  [/^(Files|Sites)\.(ReadWrite|FullControl)/i, "change or delete files in OneDrive and SharePoint"],
+  [/^(Files|Sites)\.Read/i, "read files in OneDrive and SharePoint"],
+  [/^Calendars\.ReadWrite/i, "change everyone's calendars"],
+  [/Exchange\.ManageAsApp/i, "run Exchange admin commands; what it can really do depends on the Entra role it gets (Global Reader means read only)"],
+  [/Read/i, "read information (it cannot change anything with this permission)"],
+];
+const permWords = (p: string) => (WORDS.find(([re]) => re.test(p))?.[1]) ?? `use the ${p} permission`;
+const prop = (t: any, name: string) => {
+  const x = (t?.modifiedProperties ?? []).find((m: any) => m.displayName === name);
+  return x ? String(x.newValue ?? "").replace(/^"+|"+$/g, "").trim() : "";
+};
+
+function appChange(e: any, tgt: string, appRows: any[]): Finding {
+  const act = String(e.activityDisplayName ?? "").replace(/\s+/g, " ").trim();
+  const by = e.initiatedBy?.user?.userPrincipalName ?? e.initiatedBy?.app?.displayName ?? "someone";
+  const when = String(e.activityDateTime ?? "").slice(0, 16).replace("T", " ") + " UTC";
+  const t0 = (e.targetResources ?? [])[0] ?? {};
+  const names = (e.targetResources ?? []).map((t: any) => t.displayName).filter(Boolean).join(", ") || "an app";
+  const removed = /^remove|delete/i.test(act);
+  let app = names, perms: string[] = [], resource = "", sev: Sev = "medium", title = `Entra: ${act} on ${names}`, risk = "", what = "";
+
+  if (/app role assignment/i.test(act)) {
+    // targetResources[0] is the API (Microsoft Graph, Exchange); the app that received the right is in its properties
+    resource = t0.displayName ?? "an API";
+    app = prop(t0, "ServicePrincipal.DisplayName") || names;
+    const role = prop(t0, "AppRole.Value");
+    if (role) perms = [role];
+    sev = removed ? "info" : role ? permSev(role) : "high";
+    title = removed ? `Entra: ${app} lost ${role || "a permission"} on ${resource}` : `Entra: ${app} was given ${role || "a permission"} on ${resource}`;
+    what = role ? `${app} can now ${permWords(role)}, across the whole tenant, without anyone signing in.` : `${app} got an application permission on ${resource}.`;
+    risk = removed ? "None: a permission was taken away." : RANK[sev] <= 1
+      ? `Low. ${role} only lets ${app} read; it cannot change or delete anything. The risk is someone stealing the app's secret and reading that information.`
+      : `${app} can now ${permWords(role)}. Anyone holding the app's secret gets the same power, without signing in.`;
+  } else if (/consent/i.test(act)) {
+    const raw = prop(t0, "ConsentAction.Permissions");
+    perms = [...new Set([...raw.matchAll(/Scope:\s*([^,\]]*)/g)].flatMap((m) => m[1].trim().split(/\s+/)).filter(Boolean))];
+    const admin = /true/i.test(prop(t0, "ConsentContext.IsAdminConsent"));
+    // delegated scopes act only as the signed-in person; application rights are reported by their own role-assignment events
+    sev = perms.some((p) => RANK[permSev(p)] >= 3 && !/^(openid|profile|email|offline_access)$/.test(p)) ? "medium" : "low";
+    title = `Entra: ${admin ? "admin consent" : "consent"} given to ${names}${perms.length ? ` (${perms.slice(0, 4).join(", ")}${perms.length > 4 ? ", ..." : ""})` : ""}`;
+    what = `${by} approved ${names}${admin ? " for the whole organisation" : ""}.${perms.length ? ` Sign-in rights approved: ${perms.join(", ")}.` : ""} Any app-only permissions approved at the same time show as separate findings.`;
+    risk = sev === "low" ? "Low. The approval covers sign-in and read rights that act only as the signed-in person." : "The app can act as the people who use it with these rights. Check it is an app you know.";
+  } else if (/delegated permission/i.test(act)) {
+    perms = prop(t0, "DelegatedPermissionGrant.Scope").split(/\s+/).filter(Boolean);
+    sev = removed ? "info" : perms.some((p) => RANK[permSev(p)] >= 3) ? "medium" : "low";
+    title = `Entra: ${removed ? "sign-in rights removed from" : "sign-in rights given to"} ${names}${perms.length ? ` (${perms.slice(0, 4).join(", ")})` : ""}`;
+    what = `Delegated rights act as the signed-in person, never more than that person can do.`;
+    risk = sev === "low" ? "Low. Read and sign-in rights that act as the signed-in person." : "The app can act as its users with these rights.";
+  } else {
+    // a secret or certificate added or changed: how much that matters depends on what the app may do
+    const a = appRows.find((r) => r.display_name === names);
+    const granted: string[] = (a?.permissions ?? []).filter((p: any) => p.type === "Application" && p.granted).map((p: any) => p.name);
+    perms = granted;
+    sev = removed ? "info" : granted.length ? maxSev(granted.map(permSev), "low") : "low";
+    if (RANK[sev] > RANK.medium) sev = "medium";
+    title = `Entra: ${removed ? "a secret or certificate removed from" : /create/i.test(act) ? "new app with a secret:" : "a secret or certificate added or changed on"} ${names}`;
+    what = granted.length ? `${names} may ${[...new Set(granted.map(permWords))].join("; ")}.` : `${names} has no app-only permissions at the moment.`;
+    risk = removed ? "None: a credential was taken away." : `Whoever holds the new secret can sign in as ${names} and do what it is allowed to. ${granted.length ? "" : "Right now that is nothing without a user, so the risk is low. "}New secrets are normal when an app is set up or a secret is renewed.`;
+  }
+  return { source: "entra", target_id: tgt, fingerprint: fp("en", "audit", e.id), check_code: "activity.entra_app_change", category: "activity", severity: sev,
+    title, detail: `By ${by} at ${when}. ${what}`.trim(),
+    remediation: removed ? "Nothing to do if this was planned." : `Confirm with ${by} that this was planned. If it was (for example setting up an app you know), accept it with a short note. If not, remove it in Entra › Enterprise apps › ${app} › Permissions or Certificates & secrets, and find out who did it.`,
+    meta: { id: e.id, by, app, resource, permissions: perms, action: act, risk } };
 }
